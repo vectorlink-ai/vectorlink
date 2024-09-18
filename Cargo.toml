@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 half = "2.4.1"
+rayon = "1.10.0"

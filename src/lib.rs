@@ -1,5 +1,7 @@
-mod ring_queue;
+pub mod ring_queue;
+pub mod bitmap;
 
+/*
 use half::bf16;
 
 pub struct Vectors {
@@ -25,6 +27,7 @@ pub trait Comparator: Sync {
 }
 
 impl Layer {}
+*/
 
 #[cfg(test)]
 mod tests {}

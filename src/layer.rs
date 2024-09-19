@@ -22,7 +22,8 @@ pub struct SearchParams {
 }
 
 pub trait VectorComparator: Sync {
-    fn compare_vec(&self, stored: u32, unstored: &[u8]) -> f32;
+    fn compare_vec_stored(&self, left: u32, right: u32) -> f32;
+    fn compare_vec_unstored(&self, stored: u32, unstored: &[u8]) -> f32;
 }
 
 impl Layer {
@@ -71,7 +72,7 @@ impl Layer {
             .for_each(|(neighborhood, neighbor, id_out, priority_out)| {
                 let vector_id = self.neighborhoods
                     [neighborhood as usize * self.single_neighborhood_size + neighbor];
-                let priority = comparator.compare_vec(vector_id, query_vec);
+                let priority = comparator.compare_vec_unstored(vector_id, query_vec);
                 *id_out = vector_id;
                 *priority_out = priority;
             });

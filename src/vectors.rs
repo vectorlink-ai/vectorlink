@@ -1,32 +1,33 @@
 use std::ops::Index;
 
-pub struct Vectors<T = f32> {
-    data: Vec<T>,
-    vector_size: usize,
+pub struct Vectors {
+    data: Vec<u8>,
+    vector_byte_size: usize,
 }
 
-impl<T> Vectors<T> {
-    pub fn new(data: Vec<T>, vector_size: usize) -> Self {
-        assert_eq!(0, data.len() % vector_size);
-        Self { data, vector_size }
+impl Vectors {
+    pub fn new(data: Vec<u8>, vector_byte_size: usize) -> Self {
+        assert_eq!(0, data.len() % vector_byte_size);
+        Self {
+            data,
+            vector_byte_size,
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.data.len() / self.vector_size
+        self.data.len() / self.vector_byte_size
     }
 
-    pub fn vector_size(&self) -> usize {
-        self.vector_size
+    pub fn vector_byte_size(&self) -> usize {
+        self.vector_byte_size
     }
 }
 
-impl<T> Index<usize> for Vectors<T> {
-    type Output = [T];
+impl Index<usize> for Vectors {
+    type Output = [u8];
 
     fn index(&self, index: usize) -> &Self::Output {
-        let offset = self.vector_size * index;
-        &self.data[offset..offset + self.vector_size]
+        let offset = self.vector_byte_size * index;
+        &self.data[offset..offset + self.vector_byte_size]
     }
 }
-
-pub type QuantizedVectors = Vectors<u16>;

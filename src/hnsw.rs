@@ -42,4 +42,19 @@ impl Hnsw {
             )
         }
     }
+
+    pub fn search_from_initial<C: VectorComparator>(
+        &self,
+        query_vec: &[u8],
+        sp: &SearchParams,
+        comparator: &C,
+    ) -> OrderedRingQueue {
+        // find initial distance from the 0th vec, which is our fixed start node
+        let initial_distance = comparator.compare_vec_unstored(0, query_vec);
+        // TODO figure out right parameter here
+        let mut search_queue = OrderedRingQueue::new_with(100, &[0], &[initial_distance]);
+        self.search(query_vec, &mut search_queue, sp, comparator);
+
+        search_queue
+    }
 }

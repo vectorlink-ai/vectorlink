@@ -55,6 +55,16 @@ impl RingQueue {
         }
     }
 
+    pub fn reinit_from(&mut self, queue: &RingQueue) {
+        assert!(self.capacity() <= queue.len());
+        self.head = 0;
+        self.len = queue.len;
+        for (ix, (id, priority)) in queue.iter().enumerate() {
+            self.ids[ix] = id;
+            self.priorities[ix] = priority;
+        }
+    }
+
     pub fn clone_with_capacity(&self, capacity: usize) -> Self {
         assert!(self.len() <= capacity);
         unsafe {
@@ -279,6 +289,10 @@ impl OrderedRingQueue {
     pub fn wrap(queue: RingQueue) -> Self {
         Self::assert_ordered(queue.iter());
         Self(queue)
+    }
+
+    pub fn reinit_from(&mut self, queue: &OrderedRingQueue) {
+        self.0.reinit_from(&queue.0)
     }
 
     pub fn clone_with_capacity(&self, capacity: usize) -> Self {

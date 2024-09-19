@@ -78,8 +78,8 @@ impl Indirection {
     #[inline(always)]
     fn dot_product(&self, v1: &[f32], v2: &[f32]) -> f32 {
         match self {
-            Indirection::Size1024 => vecmath::dot_product_1024_16(v1, v2),
-            Indirection::Size1536 => vecmath::dot_product_1536_16(v1, v2),
+            Indirection::Size1024 => vecmath::dot_product_1024_64(v1, v2),
+            Indirection::Size1536 => vecmath::dot_product_1536_64(v1, v2),
         }
     }
 }
@@ -110,7 +110,7 @@ struct DoctProduct1024;
 impl DotProduct for DoctProduct1024 {
     #[inline(always)]
     fn dot_product(&self, v1: &[f32], v2: &[f32]) -> f32 {
-        vecmath::dot_product_1024_16(v1, v2)
+        vecmath::dot_product_1024_64(v1, v2)
     }
 }
 
@@ -128,6 +128,24 @@ fn bench_trait_obj_dot_product(b: &mut Bencher) {
         for i in 0..VECS {
             let v2 = &vs2[(i * 1024)..((i + 1) * 1024)];
             trait_obj.dot_product(&v1, v2);
+        }
+    });
+}
+
+#[bench]
+fn bench_impl_trait_dot_product(b: &mut Bencher) {
+    const VECS: usize = 10000;
+    let mut rng = StdRng::seed_from_u64(2024);
+    let range = Uniform::from(-1.0..1.0);
+    let v1: Vec<f32> = (0..1024).map(|_| rng.sample(range)).collect();
+    let vs2: Vec<f32> = (0..1024 * VECS).map(|_| rng.sample(range)).collect();
+
+    let impl_trait = DoctProduct1024;
+
+    b.iter(|| {
+        for i in 0..VECS {
+            let v2 = &vs2[(i * 1024)..((i + 1) * 1024)];
+            impl_trait.dot_product(&v1, v2);
         }
     });
 }

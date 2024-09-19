@@ -1,3 +1,4 @@
+use std::simd::StdFloat;
 use std::simd::{f32x16, f32x32, f32x64, f32x8, num::SimdFloat};
 
 use unroll::unroll_for_loops;
@@ -16,7 +17,7 @@ macro_rules! dot_product_n_16 {
             for x in 0..$n {
                 let l = <f32x16>::from_slice(&left[x * 16..(x + 1) * 16]);
                 let r = <f32x16>::from_slice(&right[x * 16..(x + 1) * 16]);
-                sum += l * r;
+                sum = l.mul_add(r, sum);
             }
             sum.reduce_sum()
         }
@@ -31,7 +32,7 @@ macro_rules! dot_product_n_8 {
             for x in 0..$n {
                 let l = <f32x8>::from_slice(&left[x * 8..(x + 1) * 8]);
                 let r = <f32x8>::from_slice(&right[x * 8..(x + 1) * 8]);
-                sum += l * r;
+                sum = l.mul_add(r, sum);
             }
             sum.reduce_sum()
         }
@@ -46,7 +47,7 @@ macro_rules! dot_product_n_32 {
             for x in 0..$n {
                 let l = <f32x32>::from_slice(&left[x * 32..(x + 1) * 32]);
                 let r = <f32x32>::from_slice(&right[x * 32..(x + 1) * 32]);
-                sum += l * r;
+                sum = l.mul_add(r, sum);
             }
             sum.reduce_sum()
         }
@@ -61,7 +62,7 @@ macro_rules! dot_product_n_64 {
             for x in 0..$n {
                 let l = <f32x64>::from_slice(&left[x * 64..(x + 1) * 64]);
                 let r = <f32x64>::from_slice(&right[x * 64..(x + 1) * 64]);
-                sum += l * r;
+                sum = l.mul_add(r, sum);
             }
             sum.reduce_sum()
         }

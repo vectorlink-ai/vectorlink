@@ -12,4 +12,5 @@ macro_rules! check_feature {
 fn main() {
     check_feature!("avx2");
     check_feature!("f16c");
+    check_feature!("fma");
 }

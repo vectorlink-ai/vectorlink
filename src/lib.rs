@@ -1,14 +1,9 @@
-pub mod ring_queue;
 pub mod bitmap;
+pub mod memoize;
+pub mod ring_queue;
+pub mod vectors;
 
 /*
-use half::bf16;
-
-pub struct Vectors {
-    vectors: Vec<bf16>,
-    vector_size: usize,
-}
-
 pub struct Hnsw {
     vectors: Vectors,
     layers: Vec<Layer>,

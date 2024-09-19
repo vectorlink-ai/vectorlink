@@ -1,6 +1,6 @@
 use std::sync::atomic::{self, AtomicU64};
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 
 /// Bitmap that lets you atomically set entries, but reads entries
 /// without synchronizing.

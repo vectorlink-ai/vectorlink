@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use itertools::Itertools;
 use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
 use rayon::prelude::*;
 
@@ -11,12 +14,6 @@ pub struct Layer {
     single_neighborhood_size: usize,
 }
 
-#[derive(Clone, Copy)]
-pub enum InputVector<'a> {
-    Id(u32),
-    Data(&'a [u8]),
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct SearchParams {
     pub parallel_visit_count: usize,
@@ -25,6 +22,11 @@ pub struct SearchParams {
 pub trait VectorComparator: Sync {
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32;
     fn compare_vec_unstored(&self, stored: u32, unstored: &[u8]) -> f32;
+}
+
+pub trait VectorGrouper: Sync {
+    fn vector_group(&self, vec: u32) -> usize;
+    fn num_groups(&self) -> usize;
 }
 
 impl Layer {
@@ -143,6 +145,68 @@ impl Layer {
                             *n = 0;
                         }
                     }
+                }
+            });
+
+        Self {
+            neighborhoods,
+            single_neighborhood_size,
+        }
+    }
+
+    pub fn build_grouped<G: VectorGrouper>(
+        num_vecs: usize,
+        single_neighborhood_size: usize,
+        grouper: &G,
+    ) -> Self {
+        let mut neighborhoods: Vec<u32> = Vec::with_capacity(num_vecs * single_neighborhood_size);
+        unsafe {
+            neighborhoods.set_len(num_vecs * single_neighborhood_size);
+        }
+        let neighborhoods_iter = neighborhoods.par_chunks_mut(single_neighborhood_size);
+        let mut grouped_vecs: Vec<_> = (0..num_vecs as u32)
+            .into_par_iter()
+            .zip(neighborhoods_iter)
+            .map(|(v, n)| (grouper.vector_group(v), v, n))
+            .collect();
+
+        grouped_vecs.par_sort_unstable_by_key(|(g, _, _)| *g);
+
+        let groups: Vec<_> = grouped_vecs
+            .into_iter()
+            .chunk_by(|(g, _, _)| *g)
+            .into_iter()
+            .map(|(_, g)| {
+                g.map(|(_, vec, neighborhood)| (vec, neighborhood))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        groups
+            .into_par_iter()
+            .flat_map(|g| {
+                let (vec_ids, neighborhoods): (Vec<_>, Vec<_>) = g.into_iter().unzip();
+                let vec_ids = Arc::new(vec_ids);
+                neighborhoods
+                    .into_par_iter()
+                    .enumerate()
+                    .map(move |(idx, neighborhood)| (idx, neighborhood, vec_ids.clone()))
+            })
+            .for_each(|(idx, neighborhood, vec_ids)| {
+                let mut rng = StdRng::seed_from_u64(2024 + idx as u64);
+                let indexes =
+                    (1..vec_ids.len() as u32).choose_multiple(&mut rng, single_neighborhood_size);
+                for (mut i, n) in indexes.into_iter().zip(neighborhood.iter_mut()) {
+                    // we might have accidentally selected
+                    // ourselves. make sure we did not.
+                    // note that this cannot happen for index 0, since
+                    // we skip that in selection. That means the safe
+                    // thing we can always do here is to pick index 0
+                    // instead.
+                    if idx == i as usize {
+                        i = 0;
+                    }
+                    *n = vec_ids[i as usize];
                 }
             });
 

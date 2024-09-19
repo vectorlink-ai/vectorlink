@@ -26,8 +26,18 @@ pub trait VectorComparator: Sync {
 }
 
 impl Layer {
-    fn number_of_neighborhoods(&self) -> usize {
+    pub fn new(neighborhoods: Vec<u32>, single_neighborhood_size: usize) -> Self {
+        assert_eq!(0, neighborhoods.len() % single_neighborhood_size);
+        Self {
+            neighborhoods,
+            single_neighborhood_size,
+        }
+    }
+    pub fn number_of_neighborhoods(&self) -> usize {
         self.neighborhoods.len() / self.single_neighborhood_size
+    }
+    pub fn single_neighborhood_size(&self) -> usize {
+        self.single_neighborhood_size
     }
     pub fn search_from_seeds<C: VectorComparator>(
         &self,

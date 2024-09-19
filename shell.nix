@@ -6,4 +6,8 @@ mkShell {
       extensions = [ "rust-src" "rust-analyzer" ];
     })
   ];
+
+  shellHook = ''
+export RUSTFLAGS="-C target-feature=+avx2,+f16c"
+'';
 }

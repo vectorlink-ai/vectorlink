@@ -5,6 +5,7 @@ use unroll::unroll_for_loops;
 macro_rules! dot_product_n {
     ($name:ident, $n:literal) => {
         #[unroll_for_loops]
+        #[inline(always)]
         pub fn $name(left: &[f32], right: &[f32]) -> f32 {
             let mut sum = <f32x16>::splat(0.);
             for x in 0..$n {

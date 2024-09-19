@@ -1,3 +1,4 @@
+use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
 use rayon::prelude::*;
 
 use crate::{
@@ -121,6 +122,33 @@ impl Layer {
                 &seen,
             );
             seen.set_from_ids(ids_found);
+        }
+    }
+
+    pub fn build_random(num_vecs: usize, single_neighborhood_size: usize) -> Self {
+        let mut neighborhoods: Vec<u32> = Vec::with_capacity(num_vecs * single_neighborhood_size);
+        unsafe {
+            neighborhoods.set_len(num_vecs * single_neighborhood_size);
+        }
+        neighborhoods
+            .par_chunks_mut(single_neighborhood_size)
+            .enumerate()
+            .for_each(|(idx, neighborhood)| {
+                let mut rng = StdRng::seed_from_u64(2024 + idx as u64);
+                (1..num_vecs as u32).choose_multiple_fill(&mut rng, neighborhood);
+                if idx != 0 {
+                    // we might have accidentally selected ourselves. make sure we did not
+                    for n in neighborhood.iter_mut() {
+                        if *n == idx as u32 {
+                            *n = 0;
+                        }
+                    }
+                }
+            });
+
+        Self {
+            neighborhoods,
+            single_neighborhood_size,
         }
     }
 }

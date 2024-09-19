@@ -1,3 +1,4 @@
+#![feature(f16)]
 pub mod bitmap;
 pub mod memoize;
 pub mod ring_queue;

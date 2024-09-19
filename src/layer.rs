@@ -17,6 +17,18 @@ pub struct Layer {
 #[derive(Clone, Copy, Debug)]
 pub struct SearchParams {
     pub parallel_visit_count: usize,
+    pub visit_queue_len: usize,
+    pub search_queue_len: usize,
+}
+
+impl Default for SearchParams {
+    fn default() -> Self {
+        Self {
+            parallel_visit_count: 1,
+            visit_queue_len: 100,
+            search_queue_len: 300,
+        }
+    }
 }
 
 pub trait VectorComparator: Sync {

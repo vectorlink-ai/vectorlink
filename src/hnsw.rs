@@ -27,8 +27,7 @@ impl Hnsw {
             priorities.set_len(buffer_size);
         }
 
-        // TODO figure out a good count for this one
-        let mut uninitialized_visit_queue = OrderedRingQueue::new(search_queue.len() * 3);
+        let mut uninitialized_visit_queue = OrderedRingQueue::new(sp.search_queue_len);
 
         for layer in self.layers.iter() {
             layer.closest_vectors(
@@ -51,8 +50,8 @@ impl Hnsw {
     ) -> OrderedRingQueue {
         // find initial distance from the 0th vec, which is our fixed start node
         let initial_distance = comparator.compare_vec_unstored(0, query_vec);
-        // TODO figure out right parameter here
-        let mut search_queue = OrderedRingQueue::new_with(100, &[0], &[initial_distance]);
+        let mut search_queue =
+            OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
         self.search(query_vec, &mut search_queue, sp, comparator);
 
         search_queue

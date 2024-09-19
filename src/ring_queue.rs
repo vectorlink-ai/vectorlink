@@ -258,6 +258,9 @@ impl OrderedRingQueue {
             for (id, priority) in iter {
                 assert_ne!(last_id, id);
                 assert!(last_priority <= priority);
+                if last_priority == priority {
+                    assert!(last_id < id);
+                }
                 last_id = id;
                 last_priority = priority;
             }

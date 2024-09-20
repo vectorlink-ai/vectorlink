@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use crate::{
     bitmap::Bitmap,
     ring_queue::{ring_double_insert, OrderedRingQueue},
+    vecmath::PRIMES,
 };
 
 pub struct Layer {
@@ -148,14 +149,14 @@ impl Layer {
             .par_chunks_mut(single_neighborhood_size)
             .enumerate()
             .for_each(|(idx, neighborhood)| {
-                let mut rng = StdRng::seed_from_u64(2024 + idx as u64);
-                (1..num_vecs as u32).choose_multiple_fill(&mut rng, neighborhood);
-                if idx != 0 {
-                    // we might have accidentally selected ourselves. make sure we did not
-                    for n in neighborhood.iter_mut() {
-                        if *n == idx as u32 {
-                            *n = 0;
-                        }
+                for (i, n) in neighborhood.iter_mut().enumerate() {
+                    let new = ((idx + PRIMES[i % PRIMES.len()]) % num_vecs) as u32;
+                    // We might have accidentally selected
+                    // ourselves, need to shift to another prime
+                    if new == idx as u32 {
+                        *n = ((idx + PRIMES[(i + 1) % PRIMES.len()]) % num_vecs) as u32;
+                    } else {
+                        *n = new
                     }
                 }
             });
@@ -205,20 +206,15 @@ impl Layer {
                     .map(move |(idx, neighborhood)| (idx, neighborhood, vec_ids.clone()))
             })
             .for_each(|(idx, neighborhood, vec_ids)| {
-                let mut rng = StdRng::seed_from_u64(2024 + idx as u64);
-                let indexes =
-                    (1..vec_ids.len() as u32).choose_multiple(&mut rng, single_neighborhood_size);
-                for (mut i, n) in indexes.into_iter().zip(neighborhood.iter_mut()) {
-                    // we might have accidentally selected
-                    // ourselves. make sure we did not.
-                    // note that this cannot happen for index 0, since
-                    // we skip that in selection. That means the safe
-                    // thing we can always do here is to pick index 0
-                    // instead.
-                    if idx == i as usize {
-                        i = 0;
+                for (i, n) in neighborhood.iter_mut().enumerate() {
+                    let new = (idx + PRIMES[i % PRIMES.len()]) % num_vecs;
+                    // We might have accidentally selected
+                    // ourselves, need to shift to another prime
+                    if new == idx {
+                        *n = vec_ids[(idx + PRIMES[(i + 1) % PRIMES.len()]) % num_vecs];
+                    } else {
+                        *n = vec_ids[new as usize]
                     }
-                    *n = vec_ids[i as usize];
                 }
             });
 

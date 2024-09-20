@@ -36,7 +36,7 @@ impl Hnsw {
                 &mut uninitialized_visit_queue,
                 &mut ids,
                 &mut priorities,
-                &sp,
+                sp,
                 comparator,
             )
         }

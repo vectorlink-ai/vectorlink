@@ -2,7 +2,7 @@ use rayon::prelude::*;
 
 // i < j, i != j
 #[inline]
-fn index_to_offset(n: usize, i: usize, j: usize) -> usize {
+pub fn index_to_offset(n: usize, i: usize, j: usize) -> usize {
     let i_f64 = i as f64;
     let j_f64 = j as f64;
     let n_f64 = n as f64;
@@ -12,7 +12,7 @@ fn index_to_offset(n: usize, i: usize, j: usize) -> usize {
 
 // offset = i*n - (i + 2) * (i + 1) / 2 + j
 //
-fn offset_to_index(n: usize, offset: usize) -> (usize, usize) {
+pub fn offset_to_index(n: usize, offset: usize) -> (usize, usize) {
     let d = (2 * n - 1).pow(2) - 8 * offset;
     let i2 = (2 * n - 1) as f64 - (d as f64).sqrt();
     let i = (i2 / 2.0) as usize;
@@ -22,7 +22,7 @@ fn offset_to_index(n: usize, offset: usize) -> (usize, usize) {
 }
 
 #[inline]
-fn triangle_lookup_length(n: usize) -> usize {
+pub fn triangle_lookup_length(n: usize) -> usize {
     index_to_offset(n, n - 2, n - 1) + 1
 }
 

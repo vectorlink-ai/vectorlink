@@ -5,9 +5,27 @@ use rayon::prelude::*;
 
 use crate::{
     bitmap::Bitmap,
+    memoize::{index_to_offset, triangle_lookup_length},
     ring_queue::{ring_double_insert, OrderedRingQueue},
     vecmath::PRIMES,
 };
+
+#[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
+pub struct OrderedFloat(pub f32);
+
+impl Eq for OrderedFloat {}
+
+#[allow(clippy::derive_ord_xor_partial_ord)]
+impl Ord for OrderedFloat {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let res = self.partial_cmp(other);
+        if res.is_none() {
+            eprintln!("incomparable: {self:?} <> {other:?}");
+            panic!();
+        };
+        res.unwrap()
+    }
+}
 
 pub struct Layer {
     neighborhoods: Vec<u32>,
@@ -33,7 +51,8 @@ impl Default for SearchParams {
 
 pub trait VectorComparator: Sync {
     fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]);
-    fn compare_vecs_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]);
+    fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]);
+    fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]);
     fn vec_group_size() -> usize;
 
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
@@ -44,9 +63,16 @@ pub trait VectorComparator: Sync {
         result[0]
     }
 
-    fn compare_vec_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
+    fn compare_vec_stored_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
         let mut result = vec![0.0; Self::vec_group_size()];
-        self.compare_vecs_unstored(&[stored], unstored, &mut result);
+        self.compare_vecs_stored_unstored(&[stored], unstored, &mut result);
+
+        result[0]
+    }
+
+    fn compare_vec_unstored(&self, left: &[u8], right: &[u8]) -> f32 {
+        let mut result = vec![0.0; Self::vec_group_size()];
+        self.compare_vecs_unstored(left, right, &mut result);
 
         result[0]
     }
@@ -110,7 +136,7 @@ impl Layer {
                     + neighbor_group * C::vec_group_size();
                 let vector_ids =
                     &self.neighborhoods[neighbor_offset..neighbor_offset + C::vec_group_size()];
-                comparator.compare_vecs_unstored(vector_ids, query_vec, priorities_out);
+                comparator.compare_vecs_stored_unstored(vector_ids, query_vec, priorities_out);
                 ids_out.copy_from_slice(vector_ids);
             });
 
@@ -159,6 +185,83 @@ impl Layer {
                 &seen,
             );
             seen.set_from_ids(ids_found);
+        }
+    }
+
+    pub fn build_perfect<C: VectorComparator>(
+        num_vecs: usize,
+        single_neighborhood_size: usize,
+        comparator: &C,
+    ) -> Self {
+        // safety note: While not specified as mut here, we'll be
+        // modifying results unsafely below.
+        // This is safe, because it is a set without get (no
+        // synchronization issues), and each set will go to a unique
+        // offset.
+        let distances = vec![0.0_f32; triangle_lookup_length(num_vecs)];
+        (0..num_vecs as u32)
+            .into_par_iter()
+            .flat_map(|i| {
+                (i..num_vecs as u32)
+                    .into_par_iter()
+                    .chunks(C::vec_group_size())
+                    .map(move |js| (i, js))
+            })
+            .for_each(|(i, js)| {
+                let offset = index_to_offset(num_vecs, i as usize, js[0] as usize);
+                let results: &mut [f32] = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        distances.as_ptr().add(offset) as *mut f32,
+                        js.len(),
+                    )
+                };
+                if js.len() == C::vec_group_size() {
+                    comparator.compare_vecs_stored(&js, i, results);
+                } else {
+                    // the final chunk might be too short for the
+                    // group size of the comparator. In this case, we
+                    // need padded buffers.
+                    let mut inputs = vec![0_u32; C::vec_group_size()];
+                    let mut temp_results = vec![0.0_f32; C::vec_group_size()];
+                    inputs[0..js.len()].copy_from_slice(&js);
+                    comparator.compare_vecs_stored(&inputs, i, &mut temp_results);
+
+                    results.copy_from_slice(&temp_results[0..js.len()]);
+                }
+            });
+
+        // we got a cross product, let's use it to construct perfect neighborhoods.
+
+        let size = num_vecs * single_neighborhood_size;
+        let mut neighborhoods: Vec<u32> = Vec::with_capacity(size);
+        neighborhoods.spare_capacity_mut()[..size]
+            .par_chunks_mut(single_neighborhood_size)
+            .enumerate()
+            .for_each(|(neighborhood, neighborhood_slice)| {
+                // collect our best matches
+                let mut distances_for_vec: Vec<_> = (0..num_vecs as u32)
+                    .filter(|v| *v == neighborhood as u32)
+                    .map(|v| {
+                        (
+                            v,
+                            distances[index_to_offset(num_vecs, neighborhood as usize, v as usize)],
+                        )
+                    })
+                    .collect();
+                distances_for_vec.sort_unstable_by_key(|(_, x)| OrderedFloat(*x));
+                for i in 0..single_neighborhood_size {
+                    unsafe {
+                        *neighborhood_slice[i].assume_init_mut() = distances_for_vec[i].0;
+                    }
+                }
+            });
+        unsafe {
+            neighborhoods.set_len(size);
+        }
+
+        Self {
+            neighborhoods,
+            single_neighborhood_size,
         }
     }
 

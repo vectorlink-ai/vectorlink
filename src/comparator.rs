@@ -14,9 +14,14 @@ impl<'a> VectorComparator for CosineDistance1024<'a> {
     }
 
     #[inline(always)]
-    fn compare_vecs_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]) {
+    fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]) {
         let stored = stored[0];
-        result[0] = self.compare_vec_unstored(stored, unstored);
+        result[0] = self.compare_vec_stored_unstored(stored, unstored);
+    }
+
+    #[inline(always)]
+    fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]) {
+        result[0] = self.compare_vec_unstored(left, right);
     }
 
     #[inline(always)]
@@ -34,11 +39,22 @@ impl<'a> VectorComparator for CosineDistance1024<'a> {
     }
 
     #[inline(always)]
-    fn compare_vec_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
+    fn compare_vec_stored_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
         debug_assert_eq!(unstored.len(), 4096);
         let stored: &[f32; 1024] = self.vectors.get(stored as usize);
         let unstored: &[f32; 1024] = &unsafe { *(unstored.as_ptr() as *const [f32; 1024]) };
         let product = vecmath::dot_product_1024_64(stored, unstored);
+
+        ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+    }
+
+    #[inline(always)]
+    fn compare_vec_unstored(&self, left: &[u8], right: &[u8]) -> f32 {
+        debug_assert_eq!(left.len(), 4096);
+        debug_assert_eq!(right.len(), 4096);
+        let left: &[f32; 1024] = &unsafe { *(left.as_ptr() as *const [f32; 1024]) };
+        let right: &[f32; 1024] = &unsafe { *(right.as_ptr() as *const [f32; 1024]) };
+        let product = vecmath::dot_product_1024_64(left, right);
 
         ((product - 1.0) / -2.0).clamp(0.0, 1.0)
     }
@@ -65,7 +81,8 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
 
     #[inline]
     #[unroll_for_loops]
-    fn compare_vecs_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]) {
+    fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]) {
+        debug_assert!(unstored.len() == 32);
         let mut storeds = [0.0_f32; 64];
         let unstored: &[f32] =
             unsafe { std::slice::from_raw_parts(unstored.as_ptr() as *const f32, 8) };
@@ -76,7 +93,16 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
         }
 
         vecmath::multi_euclidean_8x8(&storeds[..], unstored, result);
-        todo!()
+    }
+
+    #[inline]
+    #[unroll_for_loops]
+    fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]) {
+        debug_assert!(left.len() == 32 * 8);
+        debug_assert!(right.len() == 32);
+        let left: &[f32] = unsafe { std::slice::from_raw_parts(left.as_ptr() as *const f32, 8) };
+        let right: &[f32] = unsafe { std::slice::from_raw_parts(right.as_ptr() as *const f32, 8) };
+        vecmath::multi_euclidean_8x8(left, right, result);
     }
 
     fn vec_group_size() -> usize {

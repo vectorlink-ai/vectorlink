@@ -49,7 +49,7 @@ impl Hnsw {
         comparator: &C,
     ) -> OrderedRingQueue {
         // find initial distance from the 0th vec, which is our fixed start node
-        let initial_distance = comparator.compare_vec_unstored(0, query_vec);
+        let initial_distance = comparator.compare_vec_stored_unstored(0, query_vec);
         let mut search_queue =
             OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
         self.search(query_vec, &mut search_queue, sp, comparator);

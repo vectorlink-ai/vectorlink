@@ -69,6 +69,7 @@ fn bench_dot_product_64(b: &mut Bencher) {
     });
 }
 
+#[allow(dead_code)]
 enum Indirection {
     Size1024,
     Size1536,

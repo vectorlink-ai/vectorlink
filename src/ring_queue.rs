@@ -36,15 +36,17 @@ impl RingQueue {
             len,
         }
     }
+
+    #[allow(clippy::uninit_vec)]
     pub fn new(capacity: usize) -> Self {
         Self::assert_capacity_len(capacity, 0);
         unsafe {
             let mut ids = Vec::with_capacity(capacity);
-            ids.set_len(capacity as usize);
+            ids.set_len(capacity);
             ids.shrink_to_fit();
 
-            let mut priorities = Vec::with_capacity(capacity as usize);
-            priorities.set_len(capacity as usize);
+            let mut priorities = Vec::with_capacity(capacity);
+            priorities.set_len(capacity);
             priorities.shrink_to_fit();
             Self {
                 ids,
@@ -65,15 +67,16 @@ impl RingQueue {
         }
     }
 
+    #[allow(clippy::uninit_vec)]
     pub fn clone_with_capacity(&self, capacity: usize) -> Self {
         assert!(self.len() <= capacity);
         unsafe {
             let mut ids = Vec::with_capacity(capacity);
-            ids.set_len(capacity as usize);
+            ids.set_len(capacity);
             ids.shrink_to_fit();
 
-            let mut priorities = Vec::with_capacity(capacity as usize);
-            priorities.set_len(capacity as usize);
+            let mut priorities = Vec::with_capacity(capacity);
+            priorities.set_len(capacity);
             priorities.shrink_to_fit();
             for (ix, (id, priority)) in self.iter().enumerate() {
                 ids[ix] = id;
@@ -754,14 +757,14 @@ mod tests {
         let mut candidates_queue = OrderedRingQueue::new_with(5, &[0], &[0.0]);
         eprintln!("candidates queue:");
         candidates_queue.print_all();
-        let mut ids = vec![3, 0];
+        let ids = vec![3, 0];
         let seen = Bitmap::new(20);
-        let mut priorities = vec![0.0, 0.0];
+        let priorities = vec![0.0, 0.0];
         ring_double_insert(
             &mut visit_queue,
             &mut candidates_queue,
-            &mut ids,
-            &mut priorities,
+            &ids,
+            &priorities,
             &seen,
         );
 

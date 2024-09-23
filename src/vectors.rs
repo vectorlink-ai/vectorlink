@@ -18,6 +18,10 @@ impl Vectors {
         self.data.len() / self.vector_byte_size
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     pub fn vector_byte_size(&self) -> usize {
         self.vector_byte_size
     }

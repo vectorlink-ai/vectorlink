@@ -172,7 +172,7 @@ mod offsettest {
         }
         fn calculate_centroid_norm(&self, vec: u16) -> f16 {
             let vec = vec as usize;
-            scaled_multiple(vec as usize, vec as usize)
+            scaled_multiple(vec, vec)
         }
     }
 

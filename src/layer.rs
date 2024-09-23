@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use itertools::Itertools;
-use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
 use rayon::prelude::*;
 
 use crate::{
@@ -95,6 +94,7 @@ impl Layer {
 
         n_pops
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn closest_vectors<C: VectorComparator>(
         &self,
         query_vec: &[u8],
@@ -141,15 +141,14 @@ impl Layer {
     }
 
     pub fn build_random(num_vecs: usize, single_neighborhood_size: usize) -> Self {
-        let mut neighborhoods: Vec<u32> = Vec::with_capacity(num_vecs * single_neighborhood_size);
-        unsafe {
-            neighborhoods.set_len(num_vecs * single_neighborhood_size);
-        }
-        neighborhoods
+        let size = num_vecs * single_neighborhood_size;
+        let mut neighborhoods: Vec<u32> = Vec::with_capacity(size);
+        neighborhoods.spare_capacity_mut()[..size]
             .par_chunks_mut(single_neighborhood_size)
             .enumerate()
             .for_each(|(idx, neighborhood)| {
                 for (i, n) in neighborhood.iter_mut().enumerate() {
+                    let n = unsafe { n.assume_init_mut() };
                     let new = ((idx + PRIMES[i % PRIMES.len()]) % num_vecs) as u32;
                     // We might have accidentally selected
                     // ourselves, need to shift to another prime
@@ -160,6 +159,9 @@ impl Layer {
                     }
                 }
             });
+        unsafe {
+            neighborhoods.set_len(size);
+        }
 
         Self {
             neighborhoods,
@@ -172,11 +174,10 @@ impl Layer {
         single_neighborhood_size: usize,
         grouper: &G,
     ) -> Self {
-        let mut neighborhoods: Vec<u32> = Vec::with_capacity(num_vecs * single_neighborhood_size);
-        unsafe {
-            neighborhoods.set_len(num_vecs * single_neighborhood_size);
-        }
-        let neighborhoods_iter = neighborhoods.par_chunks_mut(single_neighborhood_size);
+        let size = num_vecs * single_neighborhood_size;
+        let mut neighborhoods: Vec<u32> = Vec::with_capacity(size);
+        let neighborhoods_iter =
+            neighborhoods.spare_capacity_mut()[..size].par_chunks_mut(single_neighborhood_size);
         let mut grouped_vecs: Vec<_> = (0..num_vecs as u32)
             .into_par_iter()
             .zip(neighborhoods_iter)
@@ -207,16 +208,21 @@ impl Layer {
             })
             .for_each(|(idx, neighborhood, vec_ids)| {
                 for (i, n) in neighborhood.iter_mut().enumerate() {
+                    let n = unsafe { n.assume_init_mut() };
                     let new = (idx + PRIMES[i % PRIMES.len()]) % num_vecs;
                     // We might have accidentally selected
                     // ourselves, need to shift to another prime
                     if new == idx {
                         *n = vec_ids[(idx + PRIMES[(i + 1) % PRIMES.len()]) % num_vecs];
                     } else {
-                        *n = vec_ids[new as usize]
+                        *n = vec_ids[new]
                     }
                 }
             });
+
+        unsafe {
+            neighborhoods.set_len(size);
+        }
 
         Self {
             neighborhoods,

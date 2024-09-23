@@ -1,6 +1,7 @@
 #![feature(portable_simd)]
 #![feature(f16)]
 pub mod bitmap;
+pub mod comparator;
 pub mod hnsw;
 pub mod layer;
 pub mod memoize;

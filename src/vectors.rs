@@ -25,6 +25,12 @@ impl Vectors {
     pub fn vector_byte_size(&self) -> usize {
         self.vector_byte_size
     }
+
+    pub fn get<T>(&self, index: usize) -> &T {
+        debug_assert_eq!(std::mem::size_of::<T>(), self.vector_byte_size);
+        let offset = self.vector_byte_size * index;
+        unsafe { &*(self.data.as_ptr().add(offset) as *const T) }
+    }
 }
 
 impl Index<usize> for Vectors {

@@ -1,5 +1,5 @@
-use std::simd::StdFloat;
 use std::simd::{f32x16, f32x32, f32x64, f32x8, num::SimdFloat};
+use std::simd::{Simd, StdFloat};
 
 use unroll::unroll_for_loops;
 
@@ -82,3 +82,71 @@ dot_product_n_32!(dot_product_1536_32, 48);
 dot_product_n_32!(dot_product_1024_32, 32);
 dot_product_n_64!(dot_product_1536_64, 24);
 dot_product_n_64!(dot_product_1024_64, 16);
+
+macro_rules! dot_product_small_64 {
+    ($name:ident, $n:literal) => {
+        #[unroll_for_loops]
+        #[inline(always)]
+        pub fn $name(left: &[f32], right: &[f32], results: &mut [f32]) {
+            let l = <f32x64>::from_slice(&left[0..64]);
+            let r = <f32x64>::from_slice(&right[0..64]);
+            let sum = l * r;
+
+            for i in 0..(64 / $n) {
+                let offset = i * $n;
+                let partial: Simd<f32, $n> = Simd::from_slice(&sum.as_array()[offset..offset + $n]);
+                results[i] = partial.reduce_sum();
+            }
+        }
+    };
+}
+
+dot_product_small_64!(multi_dot_product_2, 8);
+
+macro_rules! euclidean_small_64 {
+    ($name:ident, $n:literal) => {
+        #[unroll_for_loops]
+        #[inline(always)]
+        pub fn $name(left: &[f32], right: &[f32], results: &mut [f32]) {
+            let l = <f32x64>::from_slice(&left[0..64]);
+            let mut r_arr = [0.0_f32; 64];
+            for i in 0..(64 / $n) {
+                let offset = dbg!(i * $n);
+                r_arr[offset..offset + $n].copy_from_slice(right);
+            }
+            let r = <f32x64>::from_array(r_arr);
+            let dif = (l - r);
+            let squared_dif = dif * dif;
+
+            for i in 0..(64 / $n) {
+                let offset = i * $n;
+                let partial: Simd<f32, $n> =
+                    Simd::from_slice(&squared_dif.as_array()[offset..offset + $n]);
+                results[i] = partial.reduce_sum().sqrt();
+            }
+        }
+    };
+}
+
+euclidean_small_64!(multi_euclidean_4x16, 16);
+euclidean_small_64!(multi_euclidean_8x8, 8);
+euclidean_small_64!(multi_euclidean_16x4, 4);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn euclidean_8_with_other_is_not_0() {
+        let left: Vec<_> = (0..64).map(|i| i as f32).collect();
+        let right: Vec<_> = (0..8).map(|i| i as f32).collect();
+        let mut results = [0.0; 8];
+
+        multi_euclidean_8x8(&left, &right, &mut results);
+
+        let expected: Vec<_> = (0..8)
+            .map(|i| ((i as f32 * 8.0).powi(2) * 8.0).sqrt())
+            .collect();
+        assert_eq!(expected, results);
+    }
+}

@@ -32,8 +32,24 @@ impl Default for SearchParams {
 }
 
 pub trait VectorComparator: Sync {
-    fn compare_vec_stored(&self, left: u32, right: u32) -> f32;
-    fn compare_vec_unstored(&self, stored: u32, unstored: &[u8]) -> f32;
+    fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]);
+    fn compare_vecs_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]);
+    fn vec_group_size() -> usize;
+
+    fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
+        let mut result = vec![0.0; Self::vec_group_size()];
+        let left_list = vec![left; Self::vec_group_size()];
+        self.compare_vecs_stored(&left_list, right, &mut result);
+
+        result[0]
+    }
+
+    fn compare_vec_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
+        let mut result = vec![0.0; Self::vec_group_size()];
+        self.compare_vecs_unstored(&[stored], unstored, &mut result);
+
+        result[0]
+    }
 }
 
 pub trait VectorGrouper: Sync {
@@ -64,6 +80,11 @@ impl Layer {
         priorities_slice: &mut [f32],
         comparator: &C,
     ) -> usize {
+        debug_assert!(
+            self.single_neighborhood_size >= C::vec_group_size()
+                && self.single_neighborhood_size % C::vec_group_size() == 0,
+            "comparator takes a vector group size that doesn't cleanly fit into the neighborhood size"
+        );
         let (seeds, n_pops) = visit_queue.pop_first_n(search_params.parallel_visit_count);
         let number_of_neighbors = n_pops * self.single_neighborhood_size;
         let seeds_iter = seeds.into_par_iter().map(|(id, _)| id);
@@ -77,19 +98,20 @@ impl Layer {
         zipped
             .flat_map(|(neighborhood, (ids_chunk, priorities_chunk))| {
                 ids_chunk
-                    .into_par_iter()
-                    .zip(priorities_chunk.into_par_iter())
+                    .par_chunks_mut(C::vec_group_size())
+                    .zip(priorities_chunk.par_chunks_mut(C::vec_group_size()))
                     .enumerate()
-                    .map(move |(neighbor, (id_out, priority_out))| {
-                        (neighborhood, neighbor, id_out, priority_out)
+                    .map(move |(neighbor_group, (ids_out, priorities_out))| {
+                        (neighborhood, neighbor_group, ids_out, priorities_out)
                     })
             })
-            .for_each(|(neighborhood, neighbor, id_out, priority_out)| {
-                let vector_id = self.neighborhoods
-                    [neighborhood as usize * self.single_neighborhood_size + neighbor];
-                let priority = comparator.compare_vec_unstored(vector_id, query_vec);
-                *id_out = vector_id;
-                *priority_out = priority;
+            .for_each(|(neighborhood, neighbor_group, ids_out, priorities_out)| {
+                let neighbor_offset = neighborhood as usize * self.single_neighborhood_size
+                    + neighbor_group * C::vec_group_size();
+                let vector_ids =
+                    &self.neighborhoods[neighbor_offset..neighbor_offset + C::vec_group_size()];
+                comparator.compare_vecs_unstored(vector_ids, query_vec, priorities_out);
+                ids_out.copy_from_slice(vector_ids);
             });
 
         n_pops

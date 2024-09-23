@@ -248,7 +248,7 @@ impl Layer {
                     .map(|v| {
                         (
                             v,
-                            distances[index_to_offset(num_vecs, neighborhood as usize, v as usize)],
+                            distances[index_to_offset(num_vecs, neighborhood, v as usize)],
                         )
                     })
                     .collect();

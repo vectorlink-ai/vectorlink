@@ -111,7 +111,7 @@ macro_rules! euclidean_small_64 {
             let l = <f32x64>::from_slice(&left[0..64]);
             let mut r_arr = [0.0_f32; 64];
             for i in 0..(64 / $n) {
-                let offset = dbg!(i * $n);
+                let offset = i * $n;
                 r_arr[offset..offset + $n].copy_from_slice(right);
             }
             let r = <f32x64>::from_array(r_arr);

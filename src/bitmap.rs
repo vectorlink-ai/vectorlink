@@ -24,6 +24,9 @@ impl Bitmap {
     }
 
     pub fn set(&self, index: usize) {
+        if index == u32::MAX as usize {
+            return;
+        }
         // let's pretend this is actually an atomic
         let elt = &self.data[index / 64];
 

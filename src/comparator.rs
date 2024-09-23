@@ -64,6 +64,12 @@ pub struct EuclideanDistance8x8<'a> {
     vectors: &'a Vectors,
 }
 
+impl<'a> EuclideanDistance8x8<'a> {
+    pub fn new(vectors: &'a Vectors) -> Self {
+        Self { vectors }
+    }
+}
+
 impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     #[inline]
     #[unroll_for_loops]
@@ -87,9 +93,12 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
         let unstored: &[f32] =
             unsafe { std::slice::from_raw_parts(unstored.as_ptr() as *const f32, 8) };
         for i in 0..8 {
-            let vec = self.vectors.get::<[f32; 8]>(stored[i] as usize);
-            let offset = i * 8;
-            storeds[offset..offset + 8].copy_from_slice(vec);
+            let x = stored[i];
+            if x != !0 {
+                let vec = self.vectors.get::<[f32; 8]>(x as usize);
+                let offset = i * 8;
+                storeds[offset..offset + 8].copy_from_slice(vec);
+            }
         }
 
         vecmath::multi_euclidean_8x8(&storeds[..], unstored, result);

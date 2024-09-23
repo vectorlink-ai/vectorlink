@@ -8,6 +8,10 @@ pub struct Hnsw {
 }
 
 impl Hnsw {
+    pub fn new(layers: Vec<Layer>) -> Self {
+        Self { layers }
+    }
+
     pub fn search<C: VectorComparator>(
         &self,
         query_vec: &[u8],

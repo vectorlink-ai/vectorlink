@@ -56,6 +56,7 @@ pub trait VectorComparator: Sync {
     fn vec_group_size() -> usize;
 
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
+        // need to pad to group size
         let mut result = vec![0.0; Self::vec_group_size()];
         let left_list = vec![left; Self::vec_group_size()];
         self.compare_vecs_stored(&left_list, right, &mut result);
@@ -64,8 +65,10 @@ pub trait VectorComparator: Sync {
     }
 
     fn compare_vec_stored_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
+        // need to pad to group size
         let mut result = vec![0.0; Self::vec_group_size()];
-        self.compare_vecs_stored_unstored(&[stored], unstored, &mut result);
+        let storeds = vec![stored; Self::vec_group_size()];
+        self.compare_vecs_stored_unstored(&storeds, unstored, &mut result);
 
         result[0]
     }
@@ -198,7 +201,8 @@ impl Layer {
         // This is safe, because it is a set without get (no
         // synchronization issues), and each set will go to a unique
         // offset.
-        let distances = vec![0.0_f32; triangle_lookup_length(num_vecs)];
+        let triangle_len = triangle_lookup_length(num_vecs);
+        let distances = vec![0.0_f32; triangle_len];
         (0..num_vecs as u32)
             .into_par_iter()
             .flat_map(|i| {
@@ -240,7 +244,7 @@ impl Layer {
             .for_each(|(neighborhood, neighborhood_slice)| {
                 // collect our best matches
                 let mut distances_for_vec: Vec<_> = (0..num_vecs as u32)
-                    .filter(|v| *v == neighborhood as u32)
+                    .filter(|v| *v != neighborhood as u32)
                     .map(|v| {
                         (
                             v,
@@ -250,8 +254,12 @@ impl Layer {
                     .collect();
                 distances_for_vec.sort_unstable_by_key(|(_, x)| OrderedFloat(*x));
                 for i in 0..single_neighborhood_size {
-                    unsafe {
-                        *neighborhood_slice[i].assume_init_mut() = distances_for_vec[i].0;
+                    let ptr = unsafe { neighborhood_slice[i].assume_init_mut() };
+
+                    if i >= distances_for_vec.len() {
+                        *ptr = !0;
+                    } else {
+                        *ptr = distances_for_vec[i].0;
                     }
                 }
             });
@@ -352,6 +360,63 @@ impl Layer {
         Self {
             neighborhoods,
             single_neighborhood_size,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+
+    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, vectors::Vectors};
+
+    use super::*;
+
+    fn random_8_vectors(num_vecs: usize, seed: u64) -> Vectors {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut data: Vec<f32> = (0..num_vecs * 8)
+            .map(|_| rng.gen_range(-1.0..1.0))
+            .collect();
+        let data_cast = unsafe {
+            Vec::from_raw_parts(
+                data.as_mut_ptr() as *mut u8,
+                data.len() * std::mem::size_of::<f32>(),
+                data.capacity(),
+            )
+        };
+        std::mem::forget(data);
+
+        Vectors::new(data_cast, 32)
+    }
+
+    #[test]
+    fn construct_perfect_layer() {
+        let vecs = random_8_vectors(24, 0x533D);
+        let comparator = EuclideanDistance8x8::new(&vecs);
+        let layer = Layer::build_perfect(24, 24, &comparator);
+
+        let hnsw = Hnsw::new(vec![layer]);
+        let result = hnsw.search_from_initial(
+            vecs.get::<[u8; 32]>(5),
+            &SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+            },
+            &comparator,
+        );
+
+        let left: &[f32; 8] = vecs.get(5);
+        for (result, distance) in result.iter() {
+            let right: &[f32; 8] = vecs.get(result as usize);
+            let expected = left
+                .iter()
+                .zip(right.iter())
+                .map(|(l, r)| (l - r).powi(2))
+                .sum::<f32>()
+                .sqrt();
+
+            assert!((expected - distance).abs() < 0.001);
         }
     }
 }

@@ -58,7 +58,7 @@ impl RingQueue {
     }
 
     pub fn reinit_from(&mut self, queue: &RingQueue) {
-        assert!(self.capacity() <= queue.len());
+        assert!(self.capacity() >= queue.len());
         self.head = 0;
         self.len = queue.len;
         for (ix, (id, priority)) in queue.iter().enumerate() {

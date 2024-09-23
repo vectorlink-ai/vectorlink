@@ -1,5 +1,6 @@
 use std::ops::Index;
 
+#[derive(Debug)]
 pub struct Vectors {
     data: Vec<u8>,
     vector_byte_size: usize,
@@ -29,6 +30,7 @@ impl Vectors {
     pub fn get<T>(&self, index: usize) -> &T {
         debug_assert_eq!(std::mem::size_of::<T>(), self.vector_byte_size);
         let offset = self.vector_byte_size * index;
+        debug_assert!(offset + self.vector_byte_size <= self.data.len());
         unsafe { &*(self.data.as_ptr().add(offset) as *const T) }
     }
 }

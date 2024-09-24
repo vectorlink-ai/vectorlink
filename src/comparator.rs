@@ -31,21 +31,30 @@ impl<'a> VectorComparator for CosineDistance1024<'a> {
 
     #[inline(always)]
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
-        let left: &[f32; 1024] = self.vectors.get(left as usize);
-        let right: &[f32; 1024] = self.vectors.get(right as usize);
-        let product = vecmath::dot_product_1024_64(left, right);
+        if let Some(left) = self.vectors.get::<[f32; 1024]>(left as usize) {
+            let right: &[f32; 1024] = self
+                .vectors
+                .get(right as usize)
+                .expect("You are comparing to an out-of-band id");
+            let product = vecmath::dot_product_1024_64(left, right);
 
-        ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+            ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+        } else {
+            f32::MAX
+        }
     }
 
     #[inline(always)]
     fn compare_vec_stored_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
         debug_assert_eq!(unstored.len(), 4096);
-        let stored: &[f32; 1024] = self.vectors.get(stored as usize);
-        let unstored: &[f32; 1024] = &unsafe { *(unstored.as_ptr() as *const [f32; 1024]) };
-        let product = vecmath::dot_product_1024_64(stored, unstored);
+        if let Some(stored) = self.vectors.get::<[f32; 1024]>(stored as usize) {
+            let unstored: &[f32; 1024] = &unsafe { *(unstored.as_ptr() as *const [f32; 1024]) };
+            let product = vecmath::dot_product_1024_64(stored, unstored);
 
-        ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+            ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+        } else {
+            f32::MAX
+        }
     }
 
     #[inline(always)]
@@ -74,15 +83,17 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     #[inline]
     #[unroll_for_loops]
     fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]) {
-        eprintln!("left: {left:?} right: {right:?}");
-        let mut lefts = [0.0_f32; 64];
-        let right: &[f32; 8] = self.vectors.get(right as usize);
+        let mut lefts = [f32::MAX; 64];
+        let right: &[f32; 8] = self
+            .vectors
+            .get(right as usize)
+            .expect("You are calling get with an out-of-band id");
         for i in 0..8 {
             let left_id = left[i] as usize;
-            eprintln!("left_id: {left_id}");
-            let vec = self.vectors.get::<[f32; 8]>(left_id);
-            let offset = i * 8;
-            lefts[offset..offset + 8].copy_from_slice(vec);
+            if let Some(vec) = self.vectors.get::<[f32; 8]>(left_id) {
+                let offset = i * 8;
+                lefts[offset..offset + 8].copy_from_slice(vec);
+            }
         }
 
         vecmath::multi_euclidean_8x8(&lefts[..], right, result);
@@ -92,15 +103,16 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     #[unroll_for_loops]
     fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]) {
         debug_assert!(unstored.len() == 32);
-        let mut storeds = [0.0_f32; 64];
+        let mut storeds = [f32::MAX; 64];
         let unstored: &[f32] =
             unsafe { std::slice::from_raw_parts(unstored.as_ptr() as *const f32, 8) };
         for i in 0..8 {
             let x = stored[i];
             if x != !0 {
-                let vec = self.vectors.get::<[f32; 8]>(x as usize);
-                let offset = i * 8;
-                storeds[offset..offset + 8].copy_from_slice(vec);
+                if let Some(vec) = self.vectors.get::<[f32; 8]>(x as usize) {
+                    let offset = i * 8;
+                    storeds[offset..offset + 8].copy_from_slice(vec);
+                }
             }
         }
 

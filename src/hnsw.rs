@@ -15,7 +15,7 @@ impl Hnsw {
 
     pub fn search<C: VectorComparator>(
         &self,
-        query_vec: &Vector,
+        query_vec: Vector,
         search_queue: &mut OrderedRingQueue,
         sp: &SearchParams,
         comparator: &C,
@@ -25,7 +25,7 @@ impl Hnsw {
 
     fn search_layers<C: VectorComparator>(
         layers: &[Layer],
-        query_vec: &Vector,
+        query_vec: Vector,
         search_queue: &mut OrderedRingQueue,
         sp: &SearchParams,
         comparator: &C,
@@ -59,15 +59,12 @@ impl Hnsw {
 
     pub fn search_from_initial<C: VectorComparator>(
         &self,
-        query_vec: &Vector,
+        query_vec: Vector,
         sp: &SearchParams,
         comparator: &C,
     ) -> OrderedRingQueue {
         // find initial distance from the 0th vec, which is our fixed start node
-        let initial_distance = match query_vec {
-            Vector::Slice(query_vec) => comparator.compare_vec_stored_unstored(0, query_vec),
-            Vector::Id(id) => comparator.compare_vec_stored(0, *id),
-        };
+        let initial_distance = comparator.compare_vec_vector(0, query_vec);
 
         let mut search_queue =
             OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
@@ -86,7 +83,7 @@ impl Hnsw {
         let zero_layer = Layer::build_perfect(layer_count, single_neighborhood_size, comparator);
         eprintln!("zero layer built");
         let layers = vec![zero_layer];
-        let mut grouper = SearchGrouper { layers };
+        let mut grouper = SearchGrouper { comparator, layers };
         while layer_count <= num_vecs {
             layer_count *= order;
             eprintln!("layer_count: {layer_count}");
@@ -98,8 +95,7 @@ impl Hnsw {
                 single_neighborhood_size
             };
             eprintln!("vec_count: {vec_count}");
-            let mut new_layer =
-                Layer::build_grouped(vec_count, single_neighborhood_size, &grouper, comparator);
+            let mut new_layer = Layer::build_grouped(vec_count, single_neighborhood_size, &grouper);
             new_layer.symmetrize(comparator);
 
             grouper.push(new_layer);
@@ -110,11 +106,12 @@ impl Hnsw {
     }
 }
 
-pub struct SearchGrouper {
+pub struct SearchGrouper<'a, C> {
+    comparator: &'a C,
     layers: Vec<Layer>,
 }
 
-impl SearchGrouper {
+impl<'a, C> SearchGrouper<'a, C> {
     pub fn push(&mut self, l: Layer) {
         self.layers.push(l);
     }
@@ -124,31 +121,32 @@ impl SearchGrouper {
     }
 }
 
-impl VectorGrouper for SearchGrouper {
-    fn vector_group<C: VectorComparator>(&self, vec: u32, comparator: &C) -> usize {
+impl<'a, C: VectorComparator> VectorGrouper for SearchGrouper<'a, C> {
+    fn vector_group(&self, vec: u32) -> usize {
         let sp = SearchParams {
             parallel_visit_count: 4,
             visit_queue_len: 32,
             search_queue_len: 16,
         };
         eprintln!("vec: {vec}");
-        let initial_distance = comparator.compare_vec_stored(0, vec);
+        let initial_distance = self.comparator.compare_vec_stored(0, vec);
         eprintln!("initial distance: {initial_distance}");
         let mut search_queue =
             OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
         eprintln!("searching layers");
         Hnsw::search_layers(
             &self.layers,
-            &Vector::Id(vec),
+            Vector::Id(vec),
             &mut search_queue,
             &sp,
-            comparator,
+            self.comparator,
         );
         eprintln!("{search_queue:?}");
         search_queue.pop_first().0 as usize
     }
 
     fn num_groups(&self) -> usize {
-        todo!()
+        let result = self.layers.last().unwrap();
+        result.number_of_neighborhoods()
     }
 }

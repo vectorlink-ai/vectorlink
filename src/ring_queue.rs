@@ -252,7 +252,7 @@ impl<'a> RingQueue<'a> {
         RingQueueIterator { queue: self, index }
     }
 
-    pub fn iter<'b>(&'b self) -> RingQueueIterator<'b> {
+    pub fn iter(&self) -> RingQueueIterator {
         self.iter_from(0)
     }
 

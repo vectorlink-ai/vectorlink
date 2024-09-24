@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -8,6 +8,7 @@ use crate::{
     memoize::{index_to_offset, triangle_lookup_length},
     ring_queue::{ring_double_insert, OrderedRingQueue},
     vecmath::PRIMES,
+    vectors::Vector,
 };
 
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
@@ -82,7 +83,7 @@ pub trait VectorComparator: Sync {
 }
 
 pub trait VectorGrouper: Sync {
-    fn vector_group(&self, vec: u32) -> usize;
+    fn vector_group<C: VectorComparator>(&self, vec: u32, comparator: &C) -> usize;
     fn num_groups(&self) -> usize;
 }
 
@@ -102,7 +103,7 @@ impl Layer {
     }
     pub fn search_from_seeds<C: VectorComparator>(
         &self,
-        query_vec: &[u8],
+        query_vec: &Vector,
         visit_queue: &mut OrderedRingQueue,
         search_params: &SearchParams,
         ids_slice: &mut [u32],
@@ -139,16 +140,27 @@ impl Layer {
                     + neighbor_group * C::vec_group_size();
                 let vector_ids =
                     &self.neighborhoods[neighbor_offset..neighbor_offset + C::vec_group_size()];
-                comparator.compare_vecs_stored_unstored(vector_ids, query_vec, priorities_out);
+                match query_vec {
+                    Vector::Slice(query_vec_slice) => comparator.compare_vecs_stored_unstored(
+                        vector_ids,
+                        query_vec_slice,
+                        priorities_out,
+                    ),
+                    Vector::Id(query_vec_id) => {
+                        comparator.compare_vecs_stored(vector_ids, *query_vec_id, priorities_out)
+                    }
+                }
+
                 ids_out.copy_from_slice(vector_ids);
             });
 
         n_pops
     }
+
     #[allow(clippy::too_many_arguments)]
     pub fn closest_vectors<C: VectorComparator>(
         &self,
-        query_vec: &[u8],
+        query_vec: &Vector,
         search_queue: &mut OrderedRingQueue,
         uninitalized_visit_queue: &mut OrderedRingQueue,
         ids_slice: &mut [u32],
@@ -302,10 +314,11 @@ impl Layer {
         }
     }
 
-    pub fn build_grouped<G: VectorGrouper>(
+    pub fn build_grouped<C: VectorComparator, G: VectorGrouper>(
         num_vecs: usize,
         single_neighborhood_size: usize,
         grouper: &G,
+        comparator: &C,
     ) -> Self {
         let size = num_vecs * single_neighborhood_size;
         let mut neighborhoods: Vec<u32> = Vec::with_capacity(size);
@@ -314,7 +327,7 @@ impl Layer {
         let mut grouped_vecs: Vec<_> = (0..num_vecs as u32)
             .into_par_iter()
             .zip(neighborhoods_iter)
-            .map(|(v, n)| (grouper.vector_group(v), v, n))
+            .map(|(v, n)| (grouper.vector_group(v, comparator), v, n))
             .collect();
 
         grouped_vecs.par_sort_unstable_by_key(|(g, _, _)| *g);
@@ -397,7 +410,7 @@ mod tests {
 
         let hnsw = Hnsw::new(vec![layer]);
         let result = hnsw.search_from_initial(
-            vecs.get::<[u8; 32]>(5),
+            &Vector::Id(5),
             &SearchParams {
                 parallel_visit_count: 1,
                 visit_queue_len: 100,
@@ -417,6 +430,26 @@ mod tests {
                 .sqrt();
 
             assert!((expected - distance).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn construct_hnsw() {
+        let vecs = random_8_vectors(24, 0x533D);
+        let comparator = EuclideanDistance8x8::new(&vecs);
+        let hnsw = Hnsw::generate(12, 24, 24, &comparator);
+
+        for i in 0..24 {
+            let result = hnsw.search_from_initial(
+                &Vector::Id(i),
+                &SearchParams {
+                    parallel_visit_count: 1,
+                    visit_queue_len: 100,
+                    search_queue_len: 30,
+                },
+                &comparator,
+            );
+            assert_eq!(result.get_all()[0].0, i)
         }
     }
 }

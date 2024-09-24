@@ -74,10 +74,13 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     #[inline]
     #[unroll_for_loops]
     fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]) {
+        eprintln!("left: {left:?} right: {right:?}");
         let mut lefts = [0.0_f32; 64];
         let right: &[f32; 8] = self.vectors.get(right as usize);
         for i in 0..8 {
-            let vec = self.vectors.get::<[f32; 8]>(left[i] as usize);
+            let left_id = left[i] as usize;
+            eprintln!("left_id: {left_id}");
+            let vec = self.vectors.get::<[f32; 8]>(left_id);
             let offset = i * 8;
             lefts[offset..offset + 8].copy_from_slice(vec);
         }

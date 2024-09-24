@@ -4,6 +4,9 @@ use crate::{
     vectors::Vector,
 };
 
+use rand::prelude::*;
+use rayon::prelude::*;
+
 pub struct Hnsw {
     layers: Vec<Layer>,
 }
@@ -104,6 +107,34 @@ impl Hnsw {
         }
         Hnsw::new(grouper.layers())
     }
+
+    pub fn num_vectors(&self) -> usize {
+        self.layers.last().unwrap().number_of_neighborhoods()
+    }
+
+    pub fn test_recall<C: VectorComparator>(
+        &self,
+        proportion: f32,
+        sp: &SearchParams,
+        comparator: &C,
+        seed: u64,
+    ) -> f32 {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let total: f32 = (0..self.num_vectors() as u32)
+            .choose_multiple(&mut rng, (proportion * self.num_vectors() as f32) as usize)
+            .into_par_iter()
+            .map(|i| {
+                let result = self.search_from_initial(Vector::Id(i), sp, comparator);
+                let vi = result.first();
+                if vi.0 == i {
+                    1.0_f32
+                } else {
+                    0.0_f32
+                }
+            })
+            .sum();
+        total / self.num_vectors() as f32
+    }
 }
 
 pub struct SearchGrouper<'a, C> {
@@ -128,12 +159,9 @@ impl<'a, C: VectorComparator> VectorGrouper for SearchGrouper<'a, C> {
             visit_queue_len: 32,
             search_queue_len: 16,
         };
-        eprintln!("vec: {vec}");
         let initial_distance = self.comparator.compare_vec_stored(0, vec);
-        eprintln!("initial distance: {initial_distance}");
         let mut search_queue =
             OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
-        eprintln!("searching layers");
         Hnsw::search_layers(
             &self.layers,
             Vector::Id(vec),
@@ -141,7 +169,6 @@ impl<'a, C: VectorComparator> VectorGrouper for SearchGrouper<'a, C> {
             &sp,
             self.comparator,
         );
-        eprintln!("{search_queue:?}");
         search_queue.pop_first().0 as usize
     }
 
@@ -160,21 +187,17 @@ mod tests {
 
     #[test]
     fn construct_hnsw() {
-        let vecs = random_8_vectors(24, 0x533D);
+        let number_of_vecs = 16_384;
+        let vecs = random_8_vectors(number_of_vecs, 0x533D);
         let comparator = EuclideanDistance8x8::new(&vecs);
-        let hnsw = Hnsw::generate(12, 24, 24, &comparator);
+        let hnsw = Hnsw::generate(12, 24, number_of_vecs, &comparator);
+        let sp = SearchParams {
+            parallel_visit_count: 1,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+        };
 
-        for i in 0..24 {
-            let result = hnsw.search_from_initial(
-                Vector::Id(i),
-                &SearchParams {
-                    parallel_visit_count: 1,
-                    visit_queue_len: 100,
-                    search_queue_len: 30,
-                },
-                &comparator,
-            );
-            assert_eq!(result.get_all()[0].0, i)
-        }
+        let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
+        assert_eq!(recall, 1.0);
     }
 }

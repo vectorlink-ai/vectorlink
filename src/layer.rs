@@ -45,6 +45,7 @@ pub struct SearchParams {
     pub parallel_visit_count: usize,
     pub visit_queue_len: usize,
     pub search_queue_len: usize,
+    pub circulant_parameter_count: usize,
 }
 
 impl Default for SearchParams {
@@ -53,6 +54,7 @@ impl Default for SearchParams {
             parallel_visit_count: 1,
             visit_queue_len: 100,
             search_queue_len: 30,
+            circulant_parameter_count: 8,
         }
     }
 }
@@ -142,18 +144,19 @@ impl Layer {
         priorities_slice: &mut [f32],
         comparator: &C,
     ) -> usize {
+        let total_neighborhood_size =
+            self.single_neighborhood_size + search_params.circulant_parameter_count;
         debug_assert!(
-            self.single_neighborhood_size >= C::vec_group_size()
-                && self.single_neighborhood_size % C::vec_group_size() == 0,
+            total_neighborhood_size >= C::vec_group_size()
+                && total_neighborhood_size % C::vec_group_size() == 0,
             "comparator takes a vector group size that doesn't cleanly fit into the neighborhood size"
         );
         let (seeds, n_pops) = visit_queue.pop_first_n(search_params.parallel_visit_count);
-        let number_of_neighbors = n_pops * self.single_neighborhood_size;
+        let number_of_neighbors = n_pops * total_neighborhood_size;
         let seeds_iter = seeds.into_par_iter().map(|(id, _)| id);
-        let ids_iter =
-            ids_slice[0..number_of_neighbors].par_chunks_mut(self.single_neighborhood_size);
+        let ids_iter = ids_slice[0..number_of_neighbors].par_chunks_mut(total_neighborhood_size);
         let priorities_iter =
-            priorities_slice[0..number_of_neighbors].par_chunks_mut(self.single_neighborhood_size);
+            priorities_slice[0..number_of_neighbors].par_chunks_mut(total_neighborhood_size);
 
         let zipped = seeds_iter.zip(ids_iter.zip(priorities_iter));
 
@@ -168,13 +171,28 @@ impl Layer {
                     })
             })
             .for_each(|(neighborhood, neighbor_group, ids_out, priorities_out)| {
-                let neighbor_offset = neighborhood as usize * self.single_neighborhood_size
-                    + neighbor_group * C::vec_group_size();
-                let vector_ids =
-                    &self.neighborhoods[neighbor_offset..neighbor_offset + C::vec_group_size()];
-                comparator.compare_vecs_vector(vector_ids, query_vec, priorities_out);
-
-                ids_out.copy_from_slice(vector_ids);
+                if neighbor_group < self.single_neighborhood_size / C::vec_group_size() {
+                    let neighbor_offset = neighborhood as usize * self.single_neighborhood_size
+                        + neighbor_group * C::vec_group_size();
+                    let vector_ids =
+                        &self.neighborhoods[neighbor_offset..neighbor_offset + C::vec_group_size()];
+                    comparator.compare_vecs_vector(vector_ids, query_vec, priorities_out);
+                    ids_out.copy_from_slice(vector_ids);
+                } else {
+                    let prime_group =
+                        neighbor_group - self.single_neighborhood_size / C::vec_group_size();
+                    let primes_offset = prime_group * C::vec_group_size();
+                    let mut vector_ids = vec![0; C::vec_group_size()];
+                    for (idx, prime) in PRIMES[primes_offset..primes_offset + C::vec_group_size()]
+                        .iter()
+                        .enumerate()
+                    {
+                        vector_ids[idx] =
+                            (neighborhood + *prime as u32) % self.number_of_neighborhoods() as u32;
+                    }
+                    comparator.compare_vecs_vector(&vector_ids, query_vec, priorities_out);
+                    ids_out.copy_from_slice(&vector_ids);
+                }
             });
 
         n_pops
@@ -211,7 +229,8 @@ impl Layer {
             if n_pops == 0 {
                 break;
             }
-            let actual_result_length = n_pops * self.single_neighborhood_size;
+            let actual_result_length =
+                n_pops * (self.single_neighborhood_size + search_params.circulant_parameter_count);
             let ids_found = &ids_slice[0..actual_result_length];
             let priorities_found = &priorities_slice[0..actual_result_length];
 
@@ -523,6 +542,7 @@ mod tests {
                 parallel_visit_count: 1,
                 visit_queue_len: 100,
                 search_queue_len: 30,
+                circulant_parameter_count: 0,
             },
             &comparator,
         );

@@ -55,7 +55,9 @@ impl Hnsw {
         assert!(layer_count > 0);
         let bottom_layer_idx = layer_count - 1;
         let largest_neighborhood = layers[bottom_layer_idx].as_ref().single_neighborhood_size();
-        let buffer_size = largest_neighborhood * sp.parallel_visit_count;
+        let buffer_size =
+            largest_neighborhood * (sp.parallel_visit_count + sp.circulant_parameter_count);
+        debug_assert!(buffer_size % C::vec_group_size() == 0);
         let mut ids = Vec::with_capacity(buffer_size);
         let mut priorities = Vec::with_capacity(buffer_size);
         unsafe {
@@ -213,6 +215,7 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
             parallel_visit_count: 4,
             visit_queue_len: 32,
             search_queue_len: 16,
+            circulant_parameter_count: 0,
         };
         let initial_distance = self.comparator.compare_vec_stored(0, vec);
         let mut search_queue =
@@ -264,7 +267,7 @@ mod tests {
 
     #[test]
     fn construct_unquantized_1024_hnsw() {
-        let number_of_vecs = 1000;
+        let number_of_vecs = 100_000;
         let vecs = random_vectors_normalized::<1024>(number_of_vecs, 0x533D);
         let comparator = CosineDistance1024::new(&vecs);
         let bp = BuildParams::default();

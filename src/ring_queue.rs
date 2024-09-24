@@ -424,7 +424,7 @@ impl<'a> OrderedRingQueue<'a> {
         self.0.get_all()
     }
 
-    fn insert(&mut self, elt: (u32, f32)) -> bool {
+    pub fn insert(&mut self, elt: (u32, f32)) -> bool {
         let mut did_something = false;
         let i = self.insertion_point_from(elt, 0);
         if i == self.capacity() {

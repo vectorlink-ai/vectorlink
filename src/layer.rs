@@ -375,6 +375,52 @@ impl Layer {
             single_neighborhood_size,
         }
     }
+
+    pub fn symmetrize<C: VectorComparator>(&mut self, comparator: &C) {
+        // calculate distances for all neighborhoods
+        let mut memoized_distances: Vec<f32> = self
+            .neighborhoods
+            .par_chunks(self.single_neighborhood_size)
+            .enumerate()
+            .flat_map(|(i, neighborhood)| {
+                let mut distances = Vec::with_capacity(neighborhood.len());
+                comparator.compare_vecs_stored(neighborhood, i as u32, &mut distances);
+                distances
+            })
+            .collect();
+
+        // create read-write locked ring queues
+        let neighbor_candidates: Vec<RwLock<OrderedRingQueue>> = self
+            .neighborhoods
+            .par_chunks_mut(self.single_neighborhood_size)
+            .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
+            .map(|(ids_slice, distance_slice)| {
+                RwLock::new(OrderedRingQueue::new_with_mut_slices(
+                    ids_slice,
+                    distance_slice,
+                ))
+            })
+            .collect();
+
+        // symmetrize neighborhoods
+        (0..neighbor_candidates.len())
+            .into_par_iter()
+            .for_each(|i| {
+                let neighborhood_copy: Vec<(u32, f32)> = neighbor_candidates[i]
+                    .read()
+                    .unwrap()
+                    .iter()
+                    .filter(|(n, _)| *n != u32::MAX)
+                    .collect();
+                for (neighbor, distance) in neighborhood_copy {
+                    //eprintln!("inserting into: {}", neighbor.0);
+                    neighbor_candidates[neighbor as usize]
+                        .write()
+                        .unwrap()
+                        .insert((i as u32, distance));
+                }
+            });
+    }
 }
 
 #[cfg(test)]

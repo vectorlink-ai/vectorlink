@@ -98,8 +98,10 @@ impl Hnsw {
                 single_neighborhood_size
             };
             eprintln!("vec_count: {vec_count}");
-            let new_layer =
+            let mut new_layer =
                 Layer::build_grouped(vec_count, single_neighborhood_size, &grouper, comparator);
+            new_layer.symmetrize(comparator);
+
             grouper.push(new_layer);
 
             layer_count *= order;

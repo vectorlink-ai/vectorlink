@@ -7,6 +7,11 @@ pub struct CosineDistance1024<'a> {
 }
 
 impl<'a> VectorComparator for CosineDistance1024<'a> {
+    #[inline]
+    fn num_vecs(&self) -> usize {
+        self.vectors.len()
+    }
+
     #[inline(always)]
     fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]) {
         let left = left[0];
@@ -80,6 +85,11 @@ impl<'a> EuclideanDistance8x8<'a> {
 }
 
 impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
+    #[inline]
+    fn num_vecs(&self) -> usize {
+        self.vectors.len()
+    }
+
     #[inline]
     #[unroll_for_loops]
     fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]) {

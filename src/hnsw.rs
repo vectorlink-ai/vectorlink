@@ -1,11 +1,29 @@
 use crate::{
-    layer::{Layer, SearchParams, VectorComparator, VectorGrouper},
+    layer::{Layer, SearchParams, VectorComparator, VectorGrouper, VectorSearcher},
     ring_queue::OrderedRingQueue,
     vectors::Vector,
 };
 
 use rand::prelude::*;
 use rayon::prelude::*;
+
+pub struct BuildParams {
+    order: usize,
+    neighborhood_size: usize,
+    bottom_neighborhood_size: usize,
+    optimize_sp: SearchParams,
+}
+
+impl Default for BuildParams {
+    fn default() -> Self {
+        Self {
+            order: 12,
+            neighborhood_size: 24,
+            bottom_neighborhood_size: 48,
+            optimize_sp: Default::default(),
+        }
+    }
+}
 
 pub struct Hnsw {
     layers: Vec<Layer>,
@@ -76,34 +94,35 @@ impl Hnsw {
         search_queue
     }
 
-    pub fn generate<C: VectorComparator>(
-        order: usize,
-        single_neighborhood_size: usize,
-        num_vecs: usize,
-        comparator: &C,
-    ) -> Self {
-        let mut layer_count = order;
-        let zero_layer = Layer::build_perfect(layer_count, single_neighborhood_size, comparator);
+    pub fn generate<C: VectorComparator>(bp: &BuildParams, comparator: &C) -> Self {
+        let mut layer_count = bp.order;
+        let zero_layer = Layer::build_perfect(layer_count, bp.neighborhood_size, comparator);
         eprintln!("zero layer built");
         let layers = vec![zero_layer];
-        let mut grouper = SearchGrouper { comparator, layers };
+        let mut grouper = SearchGrouper {
+            comparator,
+            layers,
+            sp: &bp.optimize_sp,
+        };
+        let num_vecs = comparator.num_vecs();
         while layer_count <= num_vecs {
-            layer_count *= order;
+            layer_count *= bp.order;
             eprintln!("layer_count: {layer_count}");
             let last_layer = layer_count >= num_vecs;
             let vec_count = if last_layer { num_vecs } else { layer_count };
             let single_neighborhood_size = if last_layer {
-                single_neighborhood_size * 2
+                bp.bottom_neighborhood_size
             } else {
-                single_neighborhood_size
+                bp.neighborhood_size
             };
             eprintln!("vec_count: {vec_count}");
             let mut new_layer = Layer::build_grouped(vec_count, single_neighborhood_size, &grouper);
             new_layer.symmetrize(comparator);
+            grouper.push(new_layer.clone());
+            new_layer.improve_neighbors(comparator, &grouper);
+            *grouper.layers.last_mut().unwrap() = new_layer;
 
-            grouper.push(new_layer);
-
-            layer_count *= order;
+            layer_count *= bp.order;
         }
         Hnsw::new(grouper.layers())
     }
@@ -139,6 +158,7 @@ impl Hnsw {
 
 pub struct SearchGrouper<'a, C> {
     comparator: &'a C,
+    sp: &'a SearchParams,
     layers: Vec<Layer>,
 }
 
@@ -149,6 +169,24 @@ impl<'a, C> SearchGrouper<'a, C> {
 
     pub fn layers(self) -> Vec<Layer> {
         self.layers
+    }
+}
+
+impl<'a, C: VectorComparator> VectorSearcher for SearchGrouper<'a, C> {
+    fn search(&self, vec: u32) -> OrderedRingQueue {
+        let initial_distance = self.comparator.compare_vec_stored(0, vec);
+
+        let mut search_queue =
+            OrderedRingQueue::new_with(self.sp.search_queue_len, &[0], &[initial_distance]);
+        Hnsw::search_layers(
+            &self.layers,
+            Vector::Id(vec),
+            &mut search_queue,
+            self.sp,
+            self.comparator,
+        );
+
+        search_queue
     }
 }
 
@@ -187,15 +225,12 @@ mod tests {
 
     #[test]
     fn construct_hnsw() {
-        let number_of_vecs = 16_384;
+        let number_of_vecs = u16::MAX as usize;
         let vecs = random_8_vectors(number_of_vecs, 0x533D);
         let comparator = EuclideanDistance8x8::new(&vecs);
-        let hnsw = Hnsw::generate(12, 24, number_of_vecs, &comparator);
-        let sp = SearchParams {
-            parallel_visit_count: 1,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-        };
+        let bp = BuildParams::default();
+        let hnsw = Hnsw::generate(&bp, &comparator);
+        let sp = SearchParams::default();
 
         let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
         assert_eq!(recall, 1.0);

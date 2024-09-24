@@ -28,6 +28,7 @@ impl Ord for OrderedFloat {
     }
 }
 
+#[derive(Clone)]
 pub struct Layer {
     neighborhoods: Vec<u32>,
     single_neighborhood_size: usize,
@@ -45,7 +46,7 @@ impl Default for SearchParams {
         Self {
             parallel_visit_count: 1,
             visit_queue_len: 100,
-            search_queue_len: 300,
+            search_queue_len: 30,
         }
     }
 }
@@ -55,6 +56,7 @@ pub trait VectorComparator: Sync {
     fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]);
     fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]);
     fn vec_group_size() -> usize;
+    fn num_vecs(&self) -> usize;
 
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
         // need to pad to group size
@@ -102,6 +104,10 @@ pub trait VectorComparator: Sync {
 pub trait VectorGrouper: Sync {
     fn vector_group(&self, vec: u32) -> usize;
     fn num_groups(&self) -> usize;
+}
+
+pub trait VectorSearcher: Sync {
+    fn search(&self, vec: u32) -> OrderedRingQueue;
 }
 
 impl Layer {
@@ -384,20 +390,24 @@ impl Layer {
     }
 
     pub fn symmetrize<C: VectorComparator>(&mut self, comparator: &C) {
-        // calculate distances for all neighborhoods
-        let mut memoized_distances: Vec<f32> = self
+        let mut memoized_distances: Vec<_> = self
             .neighborhoods
             .par_chunks(self.single_neighborhood_size)
             .enumerate()
             .flat_map(|(i, neighborhood)| {
-                let mut distances = vec![0.0; neighborhood.len()];
-                comparator.compare_vecs_stored(neighborhood, i as u32, &mut distances);
+                neighborhood
+                    .par_chunks(C::vec_group_size())
+                    .map(move |c| (i, c))
+            })
+            .flat_map(|(i, neighborhood_chunk)| {
+                let mut distances = vec![0.0; C::vec_group_size()];
+                comparator.compare_vecs_stored(neighborhood_chunk, i as u32, &mut distances);
                 distances
             })
             .collect();
 
         // create read-write locked ring queues
-        let neighbor_candidates: Vec<RwLock<OrderedRingQueue>> = self
+        let neighbor_candidates: Vec<_> = self
             .neighborhoods
             .par_chunks_mut(self.single_neighborhood_size)
             .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
@@ -425,6 +435,57 @@ impl Layer {
                         .write()
                         .unwrap()
                         .insert((i as u32, distance));
+                }
+            });
+    }
+
+    pub fn improve_neighbors<C: VectorComparator, S: VectorSearcher>(
+        &mut self,
+        comparator: &C,
+        searcher: &S,
+    ) {
+        // calculate distances for all neighborhoods
+        let mut memoized_distances: Vec<_> = self
+            .neighborhoods
+            .par_chunks(self.single_neighborhood_size)
+            .enumerate()
+            .flat_map(|(i, neighborhood)| {
+                neighborhood
+                    .par_chunks(C::vec_group_size())
+                    .map(move |c| (i, c))
+            })
+            .flat_map(|(i, neighborhood_chunk)| {
+                let mut distances = vec![0.0; C::vec_group_size()];
+                comparator.compare_vecs_stored(neighborhood_chunk, i as u32, &mut distances);
+                distances
+            })
+            .collect();
+
+        // create read-write locked ring queues
+        let neighbor_candidates: Vec<_> = self
+            .neighborhoods
+            .par_chunks_mut(self.single_neighborhood_size)
+            .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
+            .map(|(ids_slice, distance_slice)| {
+                RwLock::new(OrderedRingQueue::new_with_mut_slices(
+                    ids_slice,
+                    distance_slice,
+                ))
+            })
+            .collect();
+
+        // symmetrize neighborhoods
+        (0..neighbor_candidates.len() as u32)
+            .into_par_iter()
+            .for_each(|i| {
+                let results = searcher.search(i);
+                for (id, priority) in results.iter() {
+                    let new_pair = (i, priority);
+                    //eprintln!("inserting into: {}", neighbor.0);
+                    neighbor_candidates[id as usize]
+                        .write()
+                        .unwrap()
+                        .insert(new_pair);
                 }
             });
     }

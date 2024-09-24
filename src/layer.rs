@@ -76,7 +76,10 @@ pub trait VectorComparator: Sync {
 
     fn compare_vec_unstored(&self, left: &[u8], right: &[u8]) -> f32 {
         let mut result = vec![0.0; Self::vec_group_size()];
-        self.compare_vecs_unstored(left, right, &mut result);
+        // TODO we should probably have a vec_size fn for comparators too
+        let mut lefts = vec![0; left.len() * Self::vec_group_size()];
+        lefts[0..left.len()].copy_from_slice(left);
+        self.compare_vecs_unstored(&lefts, right, &mut result);
 
         result[0]
     }

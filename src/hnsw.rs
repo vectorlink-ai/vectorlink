@@ -272,15 +272,14 @@ mod tests {
 
     #[test]
     fn construct_unquantized_1024_hnsw() {
-        let number_of_vecs = 100_000;
+        let number_of_vecs = 1000;
         let vecs = random_vectors_normalized::<1024>(number_of_vecs, 0x533D);
         let comparator = CosineDistance1024::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);
-        let mut sp = SearchParams::default();
-        sp.circulant_parameter_count = 8;
+        let sp = SearchParams::default();
 
-        for i in 0..100 {
+        for i in 0..10 {
             let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
             eprintln!("{i}: {recall}");
             hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);

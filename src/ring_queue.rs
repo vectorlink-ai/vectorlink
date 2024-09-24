@@ -1,14 +1,39 @@
-use crate::bitmap::Bitmap;
+use crate::{bitmap::Bitmap, layer::OrderedFloat};
 use std::fmt::Debug;
 
-pub struct RingQueue {
-    ids: Vec<u32>,
-    priorities: Vec<f32>,
+#[derive(Debug)]
+pub enum VecOrSlice<'a, T> {
+    Vec(Vec<T>),
+    Slice(&'a mut [T]),
+}
+
+impl<T> std::ops::Deref for VecOrSlice<'_, T> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        match self {
+            VecOrSlice::Vec(it) => it,
+            VecOrSlice::Slice(it) => it,
+        }
+    }
+}
+
+impl<T> std::ops::DerefMut for VecOrSlice<'_, T> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        match self {
+            VecOrSlice::Vec(it) => it,
+            VecOrSlice::Slice(it) => it,
+        }
+    }
+}
+
+pub struct RingQueue<'a> {
+    ids: VecOrSlice<'a, u32>,
+    priorities: VecOrSlice<'a, f32>,
     head: u32,
     len: u32,
 }
 
-impl RingQueue {
+impl<'a> RingQueue<'a> {
     fn assert_capacity_len(capacity: usize, len: usize) {
         assert_ne!(capacity, 0, "cannot create a ring queue with capacity 0");
         assert!(
@@ -30,10 +55,25 @@ impl RingQueue {
             priorities.set_len(capacity);
         }
         Self {
-            ids,
-            priorities,
+            ids: VecOrSlice::Vec(ids),
+            priorities: VecOrSlice::Vec(priorities),
             head: 0,
             len,
+        }
+    }
+    pub fn new_with_mut_slices(
+        len: usize,
+        ids_slice: &'a mut [u32],
+        priorities_slice: &'a mut [f32],
+    ) -> Self {
+        // len is starting length
+        assert_eq!(ids_slice.len(), priorities_slice.len());
+        assert!(len < ids_slice.len());
+        Self {
+            ids: VecOrSlice::Slice(ids_slice),
+            priorities: VecOrSlice::Slice(priorities_slice),
+            head: 0,
+            len: len as u32,
         }
     }
 
@@ -49,8 +89,8 @@ impl RingQueue {
             priorities.set_len(capacity);
             priorities.shrink_to_fit();
             Self {
-                ids,
-                priorities,
+                ids: VecOrSlice::Vec(ids),
+                priorities: VecOrSlice::Vec(priorities),
                 head: 0,
                 len: 0,
             }
@@ -84,8 +124,8 @@ impl RingQueue {
             }
 
             Self {
-                ids,
-                priorities,
+                ids: VecOrSlice::Vec(ids),
+                priorities: VecOrSlice::Vec(priorities),
                 head: 0,
                 len: self.len,
             }
@@ -212,7 +252,7 @@ impl RingQueue {
         RingQueueIterator { queue: self, index }
     }
 
-    pub fn iter(&self) -> RingQueueIterator {
+    pub fn iter<'b>(&'b self) -> RingQueueIterator<'b> {
         self.iter_from(0)
     }
 
@@ -224,7 +264,7 @@ impl RingQueue {
 }
 
 pub struct RingQueueIterator<'a> {
-    queue: &'a RingQueue,
+    queue: &'a RingQueue<'a>,
     index: usize,
 }
 
@@ -242,7 +282,7 @@ impl<'a> Iterator for RingQueueIterator<'a> {
         }
     }
 }
-impl Debug for RingQueue {
+impl<'a> Debug for RingQueue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -255,9 +295,9 @@ impl Debug for RingQueue {
     }
 }
 
-pub struct OrderedRingQueue(RingQueue);
+pub struct OrderedRingQueue<'a>(RingQueue<'a>);
 
-impl OrderedRingQueue {
+impl<'a> OrderedRingQueue<'a> {
     fn assert_ordered<I: Iterator<Item = (u32, f32)>>(mut iter: I) {
         if cfg!(debug_assertions) {
             let pair = iter.next();
@@ -284,12 +324,27 @@ impl OrderedRingQueue {
         Self::assert_ordered(ids.iter().copied().zip(priorities.iter().copied()));
         Self(RingQueue::new_with(capacity, ids, priorities))
     }
+    pub fn new_with_mut_slices(ids_slice: &mut [u32], priorities_slice: &mut [f32]) -> Self {
+        let mut temporary_pairs: Vec<_> = ids_slice
+            .iter()
+            .zip(priorities_slice)
+            .map(|(x, y)| (*x, *y))
+            .collect();
+        temporary_pairs.sort_by_key(|(i, f)| (OrderedFloat(*f), i));
+        let ring_queue = Self(RingQueue::new_with_mut_slices(
+            0,
+            ids_slice,
+            priorities_slice,
+        ));
+        ring_queue.iter().map(|pair| ring_queue.insert_point(pair));
+        ring_queue
+    }
 
     pub fn new(capacity: usize) -> Self {
         Self(RingQueue::new(capacity))
     }
 
-    pub fn wrap(queue: RingQueue) -> Self {
+    pub fn wrap(queue: RingQueue<'a>) -> Self {
         Self::assert_ordered(queue.iter());
         Self(queue)
     }
@@ -367,6 +422,18 @@ impl OrderedRingQueue {
         self.0.get_all()
     }
 
+    fn insert(&mut self, elt: (u32, f32)) -> bool {
+        let mut did_something = false;
+        let i = self.insertion_point_from(elt, 0);
+        let val_at_i = self.get(i);
+        // only insert if we aren't identical
+        if val_at_i.0 != elt.0 || val_at_i.1 != elt.1 {
+            did_something = true;
+            self.0.insert_at(i, elt);
+        }
+        did_something
+    }
+
     #[cfg(test)]
     fn insertion_point(&self, pair: (u32, f32)) -> usize {
         self.insertion_point_from(pair, 0)
@@ -442,7 +509,7 @@ impl OrderedRingQueue {
     }
 }
 
-impl Debug for OrderedRingQueue {
+impl<'a> Debug for OrderedRingQueue<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }

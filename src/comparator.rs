@@ -83,6 +83,87 @@ impl<'a> VectorComparator for CosineDistance1024<'a> {
     }
 }
 
+pub struct CosineDistance1536<'a> {
+    vectors: &'a Vectors,
+}
+
+impl<'a> CosineDistance1536<'a> {
+    pub fn new(vectors: &'a Vectors) -> Self {
+        Self { vectors }
+    }
+}
+
+impl<'a> VectorComparator for CosineDistance1536<'a> {
+    #[inline]
+    fn num_vecs(&self) -> usize {
+        self.vectors.num_vecs()
+    }
+
+    #[inline(always)]
+    fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]) {
+        let left = left[0];
+        result[0] = self.compare_vec_stored(left, right);
+    }
+
+    #[inline(always)]
+    fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]) {
+        let stored = stored[0];
+        result[0] = self.compare_vec_stored_unstored(stored, unstored);
+    }
+
+    #[inline(always)]
+    fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]) {
+        result[0] = self.compare_vec_unstored(left, right);
+    }
+
+    #[inline(always)]
+    fn vec_group_size() -> usize {
+        1
+    }
+
+    #[inline(always)]
+    fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
+        if left == right {
+            return 0.0;
+        }
+        if let Some(left) = self.vectors.get::<[f32; 1536]>(left as usize) {
+            let right: &[f32; 1536] = self
+                .vectors
+                .get(right as usize)
+                .expect("You are comparing to an out-of-band id");
+            let product = vecmath::dot_product_1536_64(left, right);
+
+            ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+        } else {
+            f32::MAX
+        }
+    }
+
+    #[inline(always)]
+    fn compare_vec_stored_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
+        debug_assert_eq!(unstored.len(), 6144);
+        if let Some(stored) = self.vectors.get::<[f32; 1536]>(stored as usize) {
+            let unstored: &[f32; 1536] = &unsafe { *(unstored.as_ptr() as *const [f32; 1536]) };
+            let product = vecmath::dot_product_1536_64(stored, unstored);
+
+            ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+        } else {
+            f32::MAX
+        }
+    }
+
+    #[inline(always)]
+    fn compare_vec_unstored(&self, left: &[u8], right: &[u8]) -> f32 {
+        debug_assert_eq!(left.len(), 4096);
+        debug_assert_eq!(right.len(), 4096);
+        let left: &[f32; 1536] = &unsafe { *(left.as_ptr() as *const [f32; 1536]) };
+        let right: &[f32; 1536] = &unsafe { *(right.as_ptr() as *const [f32; 1536]) };
+        let product = vecmath::dot_product_1536_64(left, right);
+
+        ((product - 1.0) / -2.0).clamp(0.0, 1.0)
+    }
+}
+
 pub struct EuclideanDistance8x8<'a> {
     vectors: &'a Vectors,
 }

@@ -273,6 +273,9 @@ mod tests {
         for i in 0..10 {
             let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
             eprintln!("{i}: {recall}");
+            if recall == 1.0 {
+                break;
+            }
             hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);
         }
         let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
@@ -291,6 +294,32 @@ mod tests {
         for i in 0..10 {
             let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
             eprintln!("{i}: {recall}");
+            if recall == 1.0 {
+                break;
+            }
+            hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);
+        }
+        let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
+        assert_eq!(recall, 1.0);
+    }
+
+    #[test]
+    fn construct_unquantized_1536_hnsw() {
+        let number_of_vecs = 100_000;
+        let vecs = random_vectors_normalized::<1536>(number_of_vecs, 0x533D);
+        let comparator = CosineDistance1024::new(&vecs);
+        let bp = BuildParams::default();
+        let mut hnsw = Hnsw::generate(&bp, &comparator);
+        let mut sp = SearchParams::default();
+        sp.circulant_parameter_count = 4;
+        sp.parallel_visit_count = 12;
+
+        for i in 0..10 {
+            let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
+            eprintln!("{i}: {recall}");
+            if recall == 1.0 {
+                break;
+            }
             hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);
         }
         let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);

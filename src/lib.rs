@@ -5,6 +5,7 @@ pub mod comparator;
 pub mod hnsw;
 pub mod layer;
 pub mod memoize;
+pub mod pq;
 pub mod ring_queue;
 pub mod test_util;
 pub mod vecmath;

@@ -432,28 +432,10 @@ impl Layer {
 
 #[cfg(test)]
 mod tests {
-    use rand::{rngs::StdRng, Rng, SeedableRng};
 
-    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, vectors::Vectors};
+    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_8_vectors};
 
     use super::*;
-
-    fn random_8_vectors(num_vecs: usize, seed: u64) -> Vectors {
-        let mut rng = StdRng::seed_from_u64(seed);
-        let mut data: Vec<f32> = (0..num_vecs * 8)
-            .map(|_| rng.gen_range(-1.0..1.0))
-            .collect();
-        let data_cast = unsafe {
-            Vec::from_raw_parts(
-                data.as_mut_ptr() as *mut u8,
-                data.len() * std::mem::size_of::<f32>(),
-                data.capacity(),
-            )
-        };
-        std::mem::forget(data);
-
-        Vectors::new(data_cast, 32)
-    }
 
     #[test]
     fn construct_perfect_layer() {
@@ -483,26 +465,6 @@ mod tests {
                 .sqrt();
 
             assert!((expected - distance).abs() < 0.001);
-        }
-    }
-
-    #[test]
-    fn construct_hnsw() {
-        let vecs = random_8_vectors(24, 0x533D);
-        let comparator = EuclideanDistance8x8::new(&vecs);
-        let hnsw = Hnsw::generate(12, 24, 24, &comparator);
-
-        for i in 0..24 {
-            let result = hnsw.search_from_initial(
-                Vector::Id(i),
-                &SearchParams {
-                    parallel_visit_count: 1,
-                    visit_queue_len: 100,
-                    search_queue_len: 30,
-                },
-                &comparator,
-            );
-            assert_eq!(result.get_all()[0].0, i)
         }
     }
 }

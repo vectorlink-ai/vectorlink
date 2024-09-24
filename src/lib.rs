@@ -6,6 +6,8 @@ pub mod hnsw;
 pub mod layer;
 pub mod memoize;
 pub mod ring_queue;
+#[cfg(test)]
+pub mod test_util;
 pub mod vecmath;
 pub mod vectors;
 

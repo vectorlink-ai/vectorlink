@@ -150,3 +150,31 @@ impl<'a, C: VectorComparator> VectorGrouper for SearchGrouper<'a, C> {
         result.number_of_neighborhoods()
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_8_vectors};
+
+    use super::*;
+
+    #[test]
+    fn construct_hnsw() {
+        let vecs = random_8_vectors(24, 0x533D);
+        let comparator = EuclideanDistance8x8::new(&vecs);
+        let hnsw = Hnsw::generate(12, 24, 24, &comparator);
+
+        for i in 0..24 {
+            let result = hnsw.search_from_initial(
+                Vector::Id(i),
+                &SearchParams {
+                    parallel_visit_count: 1,
+                    visit_queue_len: 100,
+                    search_queue_len: 30,
+                },
+                &comparator,
+            );
+            assert_eq!(result.get_all()[0].0, i)
+        }
+    }
+}

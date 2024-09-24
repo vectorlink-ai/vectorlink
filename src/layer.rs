@@ -34,6 +34,12 @@ pub struct Layer {
     single_neighborhood_size: usize,
 }
 
+impl AsRef<Layer> for Layer {
+    fn as_ref(&self) -> &Layer {
+        self
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct SearchParams {
     pub parallel_visit_count: usize,

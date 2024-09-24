@@ -390,7 +390,7 @@ impl Layer {
             .par_chunks(self.single_neighborhood_size)
             .enumerate()
             .flat_map(|(i, neighborhood)| {
-                let mut distances = Vec::with_capacity(neighborhood.len());
+                let mut distances = vec![0.0; neighborhood.len()];
                 comparator.compare_vecs_stored(neighborhood, i as u32, &mut distances);
                 distances
             })

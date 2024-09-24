@@ -1,5 +1,6 @@
 use std::sync::{Arc, RwLock};
 
+use arc_swap::ArcSwap;
 use itertools::Itertools;
 use rayon::prelude::*;
 
@@ -495,7 +496,7 @@ impl Layer {
             .par_chunks_mut(self.single_neighborhood_size)
             .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
             .map(|(ids_slice, distance_slice)| {
-                RwLock::new(OrderedRingQueue::new_with_mut_slices(
+                ArcSwap::from_pointee(OrderedRingQueue::new_with_mut_slices(
                     ids_slice,
                     distance_slice,
                 ))
@@ -512,11 +513,15 @@ impl Layer {
                     if i == id {
                         continue;
                     }
-                    //eprintln!("inserting into: {}", neighbor.0);
-                    neighbor_candidates[id as usize]
-                        .write()
-                        .unwrap()
-                        .insert(new_pair);
+                    let ring_copy = neighbor_candidates[id as usize].load();
+                    let (_, distance) = ring_copy.last();
+                    if priority > distance {
+                        continue;
+                    } else {
+                        let ring_write_copy = neighbor_candidates[id as usize].load_full();
+                        ring_write_copy.insert(new_pair);
+                        neighbor_candidates[id as usize].swap(ring_write_copy);
+                    }
                 }
             });
     }

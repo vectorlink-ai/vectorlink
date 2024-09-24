@@ -59,7 +59,7 @@ pub fn triangle_lookup_length(n: usize) -> usize {
 pub trait CentroidDistanceCalculator: Sync {
     fn num_centroids(&self) -> usize;
     fn calculate_centroid_distance(&self, c1: u16, c2: u16) -> f16;
-    fn calculate_centroid_norm(&self, c: u16) -> f16;
+    fn calculate_centroid_squared_norm(&self, c: u16) -> f16;
 }
 
 pub struct MemoizedCentroidDistances {
@@ -92,7 +92,7 @@ impl MemoizedCentroidDistances {
             distances.set_len(memoized_array_length);
         }
         let norms: Vec<_> = (0..size)
-            .map(|i| calculator.calculate_centroid_norm(i as u16))
+            .map(|i| calculator.calculate_centroid_squared_norm(i as u16))
             .collect();
         Self {
             distances,
@@ -106,7 +106,7 @@ impl MemoizedCentroidDistances {
         let offset = match i.cmp(&j) {
             std::cmp::Ordering::Equal => {
                 // Early bail
-                return self.lookup_centroid_norm(i);
+                return self.lookup_centroid_squared_norm(i);
             }
             std::cmp::Ordering::Less => index_to_offset(self.size, i as usize, j as usize),
             std::cmp::Ordering::Greater => index_to_offset(self.size, j as usize, i as usize),
@@ -116,7 +116,7 @@ impl MemoizedCentroidDistances {
     }
 
     #[inline]
-    pub fn lookup_centroid_norm(&self, i: u16) -> f16 {
+    pub fn lookup_centroid_squared_norm(&self, i: u16) -> f16 {
         self.norms[i as usize]
     }
 
@@ -124,7 +124,9 @@ impl MemoizedCentroidDistances {
     pub fn lookup_centroid_distances(&self, i: u16x8, j: u16x8) -> f32x8 {
         let equals_mask = i.simd_eq(j);
         // early bail for equals
-        let norms = self.lookup_centroid_norms_masked(i, equals_mask.cast());
+        // TODO - this is just copied from other code but surely if
+        // two are equal then the centroid distance should just be 0?
+        //let norms = self.lookup_centroid_squared_norms_masked(i, equals_mask.cast());
 
         let less_mask = i.simd_lt(j);
         // gotta flip the greaters with the lessers
@@ -146,11 +148,12 @@ impl MemoizedCentroidDistances {
 
         // we now have two simd registers with mutually exclusive lanes filled.
         // summing them should just give us a single register with all lanes filled.
-        norms + distances
+        //norms + distances
+        distances
     }
 
     #[inline]
-    pub fn lookup_centroid_norms(&self, i: u16x8) -> f32x8 {
+    pub fn lookup_centroid_squared_norms(&self, i: u16x8) -> f32x8 {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_or_default(norms_slice, i);
@@ -161,7 +164,8 @@ impl MemoizedCentroidDistances {
     }
 
     #[inline]
-    fn lookup_centroid_norms_masked(&self, i: u16x8, mask: masksizex8) -> f32x8 {
+    #[allow(unused)]
+    fn lookup_centroid_squared_norms_masked(&self, i: u16x8, mask: masksizex8) -> f32x8 {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
@@ -253,7 +257,7 @@ mod offsettest {
         fn calculate_centroid_distance(&self, left: u16, right: u16) -> f16 {
             scaled_multiple(left as usize, right as usize)
         }
-        fn calculate_centroid_norm(&self, vec: u16) -> f16 {
+        fn calculate_centroid_squared_norm(&self, vec: u16) -> f16 {
             let vec = vec as usize;
             scaled_multiple(vec, vec)
         }
@@ -311,6 +315,9 @@ mod offsettest {
                 for (distance, (a, b)) in
                     distances.to_array().into_iter().zip(a.iter().zip(b.iter()))
                 {
+                    if a == b {
+                        continue;
+                    }
                     let calculated_distance = scaled_multiple(*a as usize, *b as usize) as f32;
                     let error = (distance - calculated_distance).abs();
                     if error > 0.1 {

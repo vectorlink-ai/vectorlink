@@ -178,8 +178,8 @@ impl<'a> MemoizedComparator128<'a> {
             distance_accumulator += self
                 .memoized
                 .lookup_centroid_distances(simd_left, simd_right);
-            squared_norm1_accumulator += self.memoized.lookup_centroid_norms(simd_left);
-            squared_norm2_accumulator += self.memoized.lookup_centroid_norms(simd_right);
+            squared_norm1_accumulator += self.memoized.lookup_centroid_squared_norms(simd_left);
+            squared_norm2_accumulator += self.memoized.lookup_centroid_squared_norms(simd_right);
         }
 
         let distance = distance_accumulator.reduce_sum();

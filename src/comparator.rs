@@ -6,6 +6,12 @@ pub struct CosineDistance1024<'a> {
     vectors: &'a Vectors,
 }
 
+impl<'a> CosineDistance1024<'a> {
+    pub fn new(vectors: &'a Vectors) -> Self {
+        Self { vectors }
+    }
+}
+
 impl<'a> VectorComparator for CosineDistance1024<'a> {
     #[inline]
     fn num_vecs(&self) -> usize {

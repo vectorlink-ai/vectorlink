@@ -196,7 +196,7 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorSearcher for SearchG
         let mut search_queue =
             OrderedRingQueue::new_with(self.sp.search_queue_len, &[0], &[initial_distance]);
         Hnsw::search_layers(
-            &self.layers,
+            self.layers,
             Vector::Id(vec),
             &mut search_queue,
             self.sp,
@@ -218,7 +218,7 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
         let mut search_queue =
             OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
         Hnsw::search_layers(
-            &self.layers,
+            self.layers,
             Vector::Id(vec),
             &mut search_queue,
             &sp,
@@ -236,14 +236,14 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
 #[cfg(test)]
 mod tests {
 
-    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_8_vectors};
+    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_vectors};
 
     use super::*;
 
     #[test]
     fn construct_hnsw() {
-        let number_of_vecs = u16::MAX as usize;
-        let vecs = random_8_vectors(number_of_vecs, 0x533D);
+        let number_of_vecs = 1000;
+        let vecs = random_vectors(number_of_vecs, 8, 0x533D);
         let comparator = EuclideanDistance8x8::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);

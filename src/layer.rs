@@ -500,13 +500,13 @@ impl Layer {
 #[cfg(test)]
 mod tests {
 
-    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_8_vectors};
+    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_vectors};
 
     use super::*;
 
     #[test]
     fn construct_perfect_layer() {
-        let vecs = random_8_vectors(24, 0x533D);
+        let vecs = random_vectors(24, 8, 0x533D);
         let comparator = EuclideanDistance8x8::new(&vecs);
         let layer = Layer::build_perfect(24, 24, &comparator);
 

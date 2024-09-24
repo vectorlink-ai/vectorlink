@@ -427,14 +427,21 @@ impl<'a> OrderedRingQueue<'a> {
     pub fn insert(&mut self, elt: (u32, f32)) -> bool {
         let mut did_something = false;
         let i = self.insertion_point_from(elt, 0);
+        assert!(i <= self.capacity());
+        assert!(i <= self.len());
         if i == self.capacity() {
             return false;
         }
-        let val_at_i = self.get(i);
-        // only insert if we aren't identical
-        if val_at_i.0 != elt.0 || val_at_i.1 != elt.1 {
-            did_something = true;
+        if i == self.len() {
             self.0.insert_at(i, elt);
+            did_something = true
+        } else {
+            let val_at_i = self.get(i);
+            // only insert if we aren't identical
+            if val_at_i.0 != elt.0 || val_at_i.1 != elt.1 {
+                did_something = true;
+                self.0.insert_at(i, elt);
+            }
         }
         did_something
     }
@@ -501,11 +508,16 @@ impl<'a> OrderedRingQueue<'a> {
             if i == self.capacity() {
                 break;
             }
-            let val_at_i = self.get(i);
-            // only insert if we aren't identical
-            if val_at_i.0 != elt.0 || val_at_i.1 != elt.1 {
+            if i == self.len() {
                 did_something = true;
                 self.0.insert_at(i, elt);
+            } else {
+                let val_at_i = self.get(i);
+                // only insert if we aren't identical
+                if val_at_i.0 != elt.0 || val_at_i.1 != elt.1 {
+                    did_something = true;
+                    self.0.insert_at(i, elt);
+                }
             }
             last_idx = i;
         }

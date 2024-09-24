@@ -65,6 +65,9 @@ pub trait VectorComparator: Sync {
     fn num_vecs(&self) -> usize;
 
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
+        if left == right {
+            return 0.0;
+        }
         // need to pad to group size
         let mut result = vec![0.0; Self::vec_group_size()];
         let left_list = vec![left; Self::vec_group_size()];
@@ -480,13 +483,16 @@ impl Layer {
             })
             .collect();
 
-        // symmetrize neighborhoods
+        // optimize neighborhoods
         (0..neighbor_candidates.len() as u32)
             .into_par_iter()
             .for_each(|i| {
                 let results = searcher.search(i);
                 for (id, priority) in results.iter() {
                     let new_pair = (i, priority);
+                    if i == id {
+                        continue;
+                    }
                     //eprintln!("inserting into: {}", neighbor.0);
                     neighbor_candidates[id as usize]
                         .write()

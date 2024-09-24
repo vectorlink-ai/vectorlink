@@ -236,12 +236,16 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
 #[cfg(test)]
 mod tests {
 
-    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_vectors};
+    use crate::{
+        comparator::{CosineDistance1024, EuclideanDistance8x8},
+        hnsw::Hnsw,
+        test_util::{random_vectors, random_vectors_normalized},
+    };
 
     use super::*;
 
     #[test]
-    fn construct_hnsw() {
+    fn construct_centroid_hnsw() {
         let number_of_vecs = 1000;
         let vecs = random_vectors(number_of_vecs, 8, 0x533D);
         let comparator = EuclideanDistance8x8::new(&vecs);
@@ -249,7 +253,25 @@ mod tests {
         let mut hnsw = Hnsw::generate(&bp, &comparator);
         let sp = SearchParams::default();
 
-        for i in 0..100 {
+        for i in 0..10 {
+            let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
+            eprintln!("{i}: {recall}");
+            hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);
+        }
+        let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
+        assert_eq!(recall, 1.0);
+    }
+
+    #[test]
+    fn construct_unquantized_1024_hnsw() {
+        let number_of_vecs = 1000;
+        let vecs = random_vectors_normalized::<1024>(number_of_vecs, 0x533D);
+        let comparator = CosineDistance1024::new(&vecs);
+        let bp = BuildParams::default();
+        let mut hnsw = Hnsw::generate(&bp, &comparator);
+        let sp = SearchParams::default();
+
+        for i in 0..10 {
             let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
             eprintln!("{i}: {recall}");
             hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);

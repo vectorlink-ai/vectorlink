@@ -18,3 +18,16 @@ pub fn random_vectors(num_vecs: usize, dimension: usize, seed: u64) -> Vectors {
 
     Vectors::new(data_cast, dimension * std::mem::size_of::<f32>())
 }
+
+pub fn random_vectors_normalized<const DIMENSION: usize>(num_vecs: usize, seed: u64) -> Vectors {
+    let mut vectors = random_vectors(num_vecs, DIMENSION, seed);
+
+    // TODO VECTORIZE
+    for i in 0..vectors.num_vecs() {
+        let v: &mut [f32; DIMENSION] = vectors.get_mut(i);
+        let size: f32 = v.iter().map(|e| e * e).sum::<f32>().sqrt();
+        v.iter_mut().for_each(|e| *e /= size);
+    }
+
+    vectors
+}

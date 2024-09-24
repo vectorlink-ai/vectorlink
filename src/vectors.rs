@@ -21,7 +21,7 @@ impl Vectors {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn num_vecs(&self) -> usize {
         self.data.len() / self.vector_byte_size
     }
 
@@ -41,6 +41,17 @@ impl Vectors {
             let offset = self.vector_byte_size * index;
             debug_assert!(offset + self.vector_byte_size <= self.data.len());
             unsafe { Some(&*(self.data.as_ptr().add(offset) as *const T)) }
+        }
+    }
+
+    pub fn get_mut<T>(&mut self, index: usize) -> &mut T {
+        if index == u32::MAX as usize {
+            panic!("wrong index {index}");
+        } else {
+            debug_assert_eq!(std::mem::size_of::<T>(), self.vector_byte_size);
+            let offset = self.vector_byte_size * index;
+            debug_assert!(offset + self.vector_byte_size <= self.data.len());
+            unsafe { &mut *(self.data.as_ptr().add(offset) as *mut T) }
         }
     }
 }

@@ -15,7 +15,7 @@ impl<'a> CosineDistance1024<'a> {
 impl<'a> VectorComparator for CosineDistance1024<'a> {
     #[inline]
     fn num_vecs(&self) -> usize {
-        self.vectors.len()
+        self.vectors.num_vecs()
     }
 
     #[inline(always)]
@@ -42,6 +42,9 @@ impl<'a> VectorComparator for CosineDistance1024<'a> {
 
     #[inline(always)]
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
+        if left == right {
+            return 0.0;
+        }
         if let Some(left) = self.vectors.get::<[f32; 1024]>(left as usize) {
             let right: &[f32; 1024] = self
                 .vectors
@@ -93,7 +96,7 @@ impl<'a> EuclideanDistance8x8<'a> {
 impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     #[inline]
     fn num_vecs(&self) -> usize {
-        self.vectors.len()
+        self.vectors.num_vecs()
     }
 
     #[inline]

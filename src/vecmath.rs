@@ -1,5 +1,5 @@
 use std::simd::{f32x16, f32x32, f32x64, f32x8, num::SimdFloat};
-use std::simd::{Simd, StdFloat};
+use std::simd::{LaneCount, Simd, StdFloat, SupportedLaneCount};
 
 use unroll::unroll_for_loops;
 
@@ -131,6 +131,28 @@ macro_rules! euclidean_small_64 {
 euclidean_small_64!(multi_euclidean_4x16, 16);
 euclidean_small_64!(multi_euclidean_8x8, 8);
 euclidean_small_64!(multi_euclidean_16x4, 4);
+
+pub fn partial_euclidean_distance<const N: usize>(left: &[f32; N], right: &[f32; N]) -> f32
+where
+    LaneCount<N>: SupportedLaneCount,
+{
+    let left_simd: Simd<f32, N> = Simd::from_slice(left);
+    let right_simd: Simd<f32, N> = Simd::from_slice(right);
+    let mut dif = left_simd - right_simd;
+    dif *= dif;
+
+    dif.reduce_sum()
+}
+
+pub fn partial_euclidean_norm<const N: usize>(vec: &[f32; N]) -> f32
+where
+    LaneCount<N>: SupportedLaneCount,
+{
+    let mut vec_simd: Simd<f32, N> = Simd::from_slice(vec);
+    vec_simd *= vec_simd;
+
+    vec_simd.reduce_sum()
+}
 
 #[cfg(test)]
 mod tests {

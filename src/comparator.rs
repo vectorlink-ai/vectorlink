@@ -3,7 +3,10 @@ use std::simd::{f32x8, num::SimdFloat, u16x8};
 use unroll::unroll_for_loops;
 
 use crate::{
-    layer::VectorComparator, memoize::MemoizedCentroidDistances, vecmath, vectors::Vectors,
+    layer::VectorComparator,
+    memoize::{CentroidDistanceCalculator, MemoizedCentroidDistances},
+    vecmath,
+    vectors::Vectors,
 };
 
 pub struct CosineDistance1024<'a> {
@@ -157,6 +160,23 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     }
 }
 
+impl<'a> CentroidDistanceCalculator for EuclideanDistance8x8<'a> {
+    fn num_centroids(&self) -> usize {
+        self.vectors.num_vecs()
+    }
+
+    fn calculate_centroid_distance(&self, c1: u16, c2: u16) -> f16 {
+        let left = self.vectors.get::<[f32; 8]>(c1 as usize).unwrap();
+        let right = self.vectors.get::<[f32; 8]>(c2 as usize).unwrap();
+        vecmath::partial_euclidean_distance(left, right) as f16
+    }
+
+    fn calculate_centroid_squared_norm(&self, c: u16) -> f16 {
+        let vec = self.vectors.get::<[f32; 8]>(c as usize).unwrap();
+        vecmath::partial_euclidean_norm(vec) as f16
+    }
+}
+
 pub struct MemoizedComparator128<'a> {
     vectors: &'a Vectors,
     memoized: &'a MemoizedCentroidDistances,
@@ -166,7 +186,7 @@ impl<'a> MemoizedComparator128<'a> {
     #[inline(always)]
     #[unroll_for_loops]
     fn compare_raw(&self, left: &[u16; 128], right: &[u16; 128]) -> f32 {
-        let mut distance_accumulator = f32x8::splat(0.0);
+        let mut partial_distance_accumulator = f32x8::splat(0.0);
         let mut squared_norm1_accumulator = f32x8::splat(0.0);
         let mut squared_norm2_accumulator = f32x8::splat(0.0);
         for i in 0..16 {
@@ -175,14 +195,14 @@ impl<'a> MemoizedComparator128<'a> {
             let simd_left = u16x8::from_slice(&left[offset..offset + SIZE]);
             let simd_right = u16x8::from_slice(&right[offset..offset + SIZE]);
 
-            distance_accumulator += self
+            partial_distance_accumulator += self
                 .memoized
                 .lookup_centroid_distances(simd_left, simd_right);
             squared_norm1_accumulator += self.memoized.lookup_centroid_squared_norms(simd_left);
             squared_norm2_accumulator += self.memoized.lookup_centroid_squared_norms(simd_right);
         }
 
-        let distance = distance_accumulator.reduce_sum();
+        let distance = partial_distance_accumulator.reduce_sum().sqrt();
         let norm1 = squared_norm1_accumulator.reduce_sum().sqrt();
         let norm2 = squared_norm2_accumulator.reduce_sum().sqrt();
 

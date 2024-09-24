@@ -188,6 +188,15 @@ impl Hnsw {
             .sum();
         total / self.num_vectors() as f32
     }
+
+    pub fn get_layer_mut(&mut self, layer_id: usize) -> &mut Layer {
+        assert!(layer_id < self.layers.len());
+        &mut self.layers[layer_id]
+    }
+
+    pub fn layer_count(&self) -> usize {
+        self.layers.len()
+    }
 }
 
 pub struct SearchGrouper<'a, C, L: AsRef<Layer>> {

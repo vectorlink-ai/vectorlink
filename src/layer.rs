@@ -51,7 +51,7 @@ pub struct SearchParams {
 impl Default for SearchParams {
     fn default() -> Self {
         Self {
-            parallel_visit_count: 1,
+            parallel_visit_count: 4,
             visit_queue_len: 100,
             search_queue_len: 30,
             circulant_parameter_count: 8,

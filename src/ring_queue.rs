@@ -324,19 +324,21 @@ impl<'a> OrderedRingQueue<'a> {
         Self::assert_ordered(ids.iter().copied().zip(priorities.iter().copied()));
         Self(RingQueue::new_with(capacity, ids, priorities))
     }
-    pub fn new_with_mut_slices(ids_slice: &mut [u32], priorities_slice: &mut [f32]) -> Self {
-        let mut temporary_pairs: Vec<_> = ids_slice
+    pub fn new_with_mut_slices(ids_slice: &'a mut [u32], priorities_slice: &'a mut [f32]) -> Self {
+        let mut temporary_pairs: Vec<(u32, f32)> = ids_slice
             .iter()
-            .zip(priorities_slice)
+            .zip(&*priorities_slice)
             .map(|(x, y)| (*x, *y))
             .collect();
-        temporary_pairs.sort_by_key(|(i, f)| (OrderedFloat(*f), i));
-        let ring_queue = Self(RingQueue::new_with_mut_slices(
+        temporary_pairs.sort_by_key(|(i, f)| (OrderedFloat(*f), *i));
+        let mut ring_queue = Self(RingQueue::new_with_mut_slices(
             0,
             ids_slice,
             priorities_slice,
         ));
-        ring_queue.iter().map(|pair| ring_queue.insert_point(pair));
+        temporary_pairs.iter().for_each(|pair| {
+            ring_queue.insert(*pair);
+        });
         ring_queue
     }
 
@@ -425,6 +427,9 @@ impl<'a> OrderedRingQueue<'a> {
     fn insert(&mut self, elt: (u32, f32)) -> bool {
         let mut did_something = false;
         let i = self.insertion_point_from(elt, 0);
+        if i == self.capacity() {
+            return false;
+        }
         let val_at_i = self.get(i);
         // only insert if we aren't identical
         if val_at_i.0 != elt.0 || val_at_i.1 != elt.1 {

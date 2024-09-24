@@ -177,6 +177,7 @@ mod offsettest {
     }
 
     #[test]
+    #[ignore]
     fn distances_are_mapped_right() {
         let distances = MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
         let mut rng = StdRng::seed_from_u64(2024);

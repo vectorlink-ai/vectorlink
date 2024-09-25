@@ -1,7 +1,5 @@
 use std::{ops::Index, sync::Arc};
 
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
-
 #[derive(Debug, Clone, Copy)]
 pub enum Vector<'a> {
     Slice(&'a [u8]),

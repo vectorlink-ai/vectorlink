@@ -5,12 +5,10 @@ use rayon::prelude::*;
 
 use crate::{
     comparator::{QuantizedVectorComparatorConstructor, VectorComparatorConstructor},
-    hnsw::{BuildParams, Hnsw},
-    layer::{SearchParams, VectorComparator},
-    memoize::{
-        CentroidDistanceCalculator, CentroidDistanceCalculatorConstructor,
-        MemoizedCentroidDistances,
-    },
+    hnsw::Hnsw,
+    layer::VectorComparator,
+    memoize::{CentroidDistanceCalculatorConstructor, MemoizedCentroidDistances},
+    params::{BuildParams, SearchParams},
     ring_queue::OrderedRingQueue,
     vectors::{Vector, Vectors},
 };

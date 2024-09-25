@@ -1,34 +1,12 @@
 use crate::{
-    layer::{Layer, SearchParams, VectorComparator, VectorGrouper, VectorSearcher},
+    layer::{Layer, VectorComparator, VectorGrouper, VectorSearcher},
+    params::{BuildParams, SearchParams},
     ring_queue::OrderedRingQueue,
     vectors::Vector,
 };
 
 use rand::prelude::*;
 use rayon::prelude::*;
-
-pub struct BuildParams {
-    order: usize,
-    neighborhood_size: usize,
-    bottom_neighborhood_size: usize,
-    optimize_sp: SearchParams,
-}
-
-impl Default for BuildParams {
-    fn default() -> Self {
-        Self {
-            order: 12,
-            neighborhood_size: 24,
-            bottom_neighborhood_size: 48,
-            optimize_sp: SearchParams {
-                parallel_visit_count: 1,
-                visit_queue_len: 100,
-                search_queue_len: 30,
-                circulant_parameter_count: 0,
-            },
-        }
-    }
-}
 
 pub struct Hnsw {
     layers: Vec<Layer>,

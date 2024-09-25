@@ -6,6 +6,7 @@ use rayon::prelude::*;
 use crate::{
     bitmap::Bitmap,
     memoize::{index_to_offset, triangle_lookup_length},
+    params::SearchParams,
     ring_queue::{ring_double_insert, OrderedRingQueue},
     vecmath::PRIMES,
     vectors::Vector,
@@ -37,25 +38,6 @@ pub struct Layer {
 impl AsRef<Layer> for Layer {
     fn as_ref(&self) -> &Layer {
         self
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct SearchParams {
-    pub parallel_visit_count: usize,
-    pub visit_queue_len: usize,
-    pub search_queue_len: usize,
-    pub circulant_parameter_count: usize,
-}
-
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self {
-            parallel_visit_count: 4,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-            circulant_parameter_count: 8,
-        }
     }
 }
 

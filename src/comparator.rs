@@ -4,7 +4,10 @@ use unroll::unroll_for_loops;
 
 use crate::{
     layer::VectorComparator,
-    memoize::{CentroidDistanceCalculator, MemoizedCentroidDistances},
+    memoize::{
+        CentroidDistanceCalculator, CentroidDistanceCalculatorConstructor,
+        MemoizedCentroidDistances,
+    },
     vecmath,
     vectors::Vectors,
 };
@@ -256,11 +259,20 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     }
 }
 
-pub struct DotProductCentroidDistanceCalculator8x8<'a> {
+pub struct DotProductCentroidDistanceCalculator8<'a> {
     vectors: &'a Vectors,
 }
 
-impl<'a> CentroidDistanceCalculator for DotProductCentroidDistanceCalculator8x8<'a> {
+pub struct NewDotProductCentroidDistanceCalculator8;
+
+impl CentroidDistanceCalculatorConstructor for NewDotProductCentroidDistanceCalculator8 {
+    type Calculator<'a> = DotProductCentroidDistanceCalculator8<'a>;
+    fn new(vectors: &Vectors) -> Self::Calculator<'_> {
+        Self::Calculator { vectors }
+    }
+}
+
+impl<'a> CentroidDistanceCalculator for DotProductCentroidDistanceCalculator8<'a> {
     fn num_centroids(&self) -> usize {
         self.vectors.num_vecs()
     }
@@ -381,14 +393,40 @@ impl<'a> VectorComparator for MemoizedComparator128<'a> {
     }
 }
 
-pub trait VectorComparatorConstructor<'a>: VectorComparator {
-    fn new_from_vecs(vecs: &'a Vectors) -> Self;
+pub trait VectorComparatorConstructor {
+    type Comparator<'a>: VectorComparator
+    where
+        Self: 'a;
+    fn new_from_vecs(vecs: &Vectors) -> Self::Comparator<'_>;
 }
 
-pub struct EuclideanDistance8x8Constructor;
+pub struct NewEuclideanDistance8x8;
+impl VectorComparatorConstructor for NewEuclideanDistance8x8 {
+    type Comparator<'a> = EuclideanDistance8x8<'a>;
 
-impl<'a> VectorComparatorConstructor<'a> for EuclideanDistance8x8<'a> {
-    fn new_from_vecs(vectors: &'a Vectors) -> Self {
+    fn new_from_vecs(vectors: &Vectors) -> Self::Comparator<'_> {
         EuclideanDistance8x8 { vectors }
+    }
+}
+
+pub trait QuantizedVectorComparatorConstructor {
+    type Comparator<'a>: VectorComparator
+    where
+        Self: 'a;
+    fn new<'a>(vecs: &'a Vectors, memoized: &'a MemoizedCentroidDistances) -> Self::Comparator<'a>;
+}
+
+pub struct NewMemoizedComparator128;
+
+impl QuantizedVectorComparatorConstructor for NewMemoizedComparator128 {
+    type Comparator<'a> = MemoizedComparator128<'a>;
+    fn new<'a>(
+        quantized_vectors: &'a Vectors,
+        memoized: &'a MemoizedCentroidDistances,
+    ) -> Self::Comparator<'a> {
+        Self::Comparator {
+            quantized_vectors,
+            memoized,
+        }
     }
 }

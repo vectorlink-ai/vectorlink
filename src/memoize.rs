@@ -7,6 +7,8 @@ use std::simd::{
 
 use rayon::prelude::*;
 
+use crate::vectors::Vectors;
+
 // i < j, i != j
 #[inline]
 pub fn index_to_offset(n: usize, i: usize, j: usize) -> usize {
@@ -60,6 +62,13 @@ pub trait CentroidDistanceCalculator: Sync {
     fn num_centroids(&self) -> usize;
     fn calculate_partial_dot_product(&self, c1: u16, c2: u16) -> f16;
     fn calculate_partial_dot_product_norm(&self, c: u16) -> f16;
+}
+
+pub trait CentroidDistanceCalculatorConstructor {
+    type Calculator<'a>: CentroidDistanceCalculator
+    where
+        Self: 'a;
+    fn new(vectors: &Vectors) -> Self::Calculator<'_>;
 }
 
 pub struct MemoizedCentroidDistances {

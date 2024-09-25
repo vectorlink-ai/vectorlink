@@ -4,10 +4,13 @@ use rand::prelude::*;
 use rayon::prelude::*;
 
 use crate::{
-    comparator::VectorComparatorConstructor,
+    comparator::{QuantizedVectorComparatorConstructor, VectorComparatorConstructor},
     hnsw::{BuildParams, Hnsw},
     layer::{SearchParams, VectorComparator},
-    memoize::{CentroidDistanceCalculator, MemoizedCentroidDistances},
+    memoize::{
+        CentroidDistanceCalculator, CentroidDistanceCalculatorConstructor,
+        MemoizedCentroidDistances,
+    },
     vectors::{Vector, Vectors},
 };
 
@@ -23,7 +26,7 @@ pub trait VectorRangeIndexable {
     fn num_vecs(&self) -> usize;
 }
 
-pub struct VectorRangeIndexableForVectors<'a>(&'a Vectors);
+pub struct VectorRangeIndexableForVectors<'a>(pub &'a Vectors);
 
 impl<'a> VectorRangeIndexable for VectorRangeIndexableForVectors<'a> {
     fn get_ranges(&self, byte_ranges: &[Range<usize>]) -> Vectors {
@@ -81,10 +84,15 @@ pub struct Quantizer {
 }
 
 impl Quantizer {
-    pub fn quantize<C: VectorComparator>(&self, unquantized: &[u8], comparator: &C) -> Vec<u8> {
+    pub fn quantize<C: VectorComparator>(
+        &self,
+        unquantized: &[u8],
+        comparator: &C,
+        out: &mut [u8],
+    ) {
         debug_assert_eq!(0, unquantized.len() % C::vector_byte_size());
         let mut quantized: Vec<u16> = unquantized
-            .par_chunks(C::vector_byte_size())
+            .chunks(C::vector_byte_size())
             .map(|chunk| {
                 self.hnsw
                     .search_from_initial(Vector::Slice(chunk), &self.sp, comparator)
@@ -118,7 +126,7 @@ impl Quantizer {
         result
     }
 
-    pub fn quantize_all<V: Iterator<Item = Vec<u8>>, C: VectorComparator>(
+    pub fn quantize_all<'a, V: Iterator<Item = &'a [u8]>, C: VectorComparator>(
         &self,
         num_vecs: usize,
         vecs: V,
@@ -126,25 +134,34 @@ impl Quantizer {
     ) -> Vectors {
         let total_byte_size = num_vecs * C::vector_byte_size();
         let mut data = Vec::with_capacity(total_byte_size);
-        for v in vecs {
-            let quantized = self.quantize(&v, comparator);
-            data.extend(quantized);
+        for (ix, (v, out)) in vecs
+            .zip(data.spare_capacity_mut().chunks_mut(C::vector_byte_size()))
+            .enumerate()
+        {
+            if ix % 1000 == 0 {
+                eprintln!("quantizing {ix}");
+            }
+            let out_cast: &mut [u8] = unsafe { std::mem::transmute(out) };
+            self.quantize(v, comparator, out_cast);
+        }
+        unsafe {
+            data.set_len(total_byte_size);
         }
         Vectors::new(data, C::vector_byte_size())
     }
 
-    fn new(hnsw: Hnsw, sp: SearchParams) -> Self {
+    pub fn new(hnsw: Hnsw, sp: SearchParams) -> Self {
         Self { hnsw, sp }
     }
 }
 
 pub fn create_pq<
     'a,
+    CentroidComparatorConstructor: VectorComparatorConstructor,
+    QuantizedComparatorConstructor: QuantizedVectorComparatorConstructor,
+    CDC: CentroidDistanceCalculatorConstructor,
     VRI: VectorRangeIndexable,
-    V: Iterator<Item = Vec<u8>>,
-    CentroidComparatorConstructor: for<'b> VectorComparatorConstructor<'b>,
-    QuantizedComparatorConstructor: for<'b> VectorComparatorConstructor<'b>,
-    CDC: CentroidDistanceCalculator,
+    V: Iterator<Item = &'a [u8]>,
 >(
     vectors: &'a VRI,
     vector_stream: V,
@@ -153,19 +170,28 @@ pub fn create_pq<
     centroid_build_params: &BuildParams,
     quantized_build_params: &BuildParams,
     quantizer_search_params: SearchParams,
-    cdc: CDC,
     seed: u64,
 ) -> Pq {
     let centroids = centroid_finder(vectors, centroid_count, centroid_byte_size, seed);
+    eprintln!("found centroids");
     let centroid_comparator = CentroidComparatorConstructor::new_from_vecs(&centroids);
+    let centroid_distance_calculator = CDC::new(&centroids);
 
     let centroid_hnsw = Hnsw::generate(centroid_build_params, &centroid_comparator);
+    eprintln!("generated centroid hnsw");
     let quantizer = Quantizer::new(centroid_hnsw, quantizer_search_params);
     let quantized_vectors =
         quantizer.quantize_all(vectors.num_vecs(), vector_stream, &centroid_comparator);
-    let quantized_comparator = QuantizedComparatorConstructor::new_from_vecs(&quantized_vectors);
+    eprintln!("quantized");
+
+    let memoized_distances = MemoizedCentroidDistances::new(&centroid_distance_calculator);
+    let quantized_comparator =
+        QuantizedComparatorConstructor::new(&quantized_vectors, &memoized_distances);
     let quantized_hnsw = Hnsw::generate(quantized_build_params, &quantized_comparator);
-    let memoized_distances = MemoizedCentroidDistances::new(&cdc);
+    eprintln!("generated quantized hnsw");
+
+    std::mem::drop(quantized_comparator);
+
     Pq {
         memoized_distances,
         quantized_hnsw,
@@ -176,7 +202,14 @@ pub fn create_pq<
 #[cfg(test)]
 mod tests {
 
-    use crate::test_util::random_vectors;
+    use crate::{
+        comparator::{
+            DotProductCentroidDistanceCalculator8, EuclideanDistance8x8, MemoizedComparator128,
+            NewDotProductCentroidDistanceCalculator8, NewEuclideanDistance8x8,
+            NewMemoizedComparator128,
+        },
+        test_util::random_vectors,
+    };
 
     use super::*;
 
@@ -185,8 +218,28 @@ mod tests {
         let number_of_vecs = 100_000;
         let vecs = random_vectors(number_of_vecs, 1024, 0x533D);
         let vector_indexable = VectorRangeIndexableForVectors(&vecs);
-        //let vector_stream = VectorStreamForVectors(&vecs);
-        //let pq = create_pq(vectors,
-        todo!();
+        let vector_stream = vecs.iter();
+        let centroid_count = u16::MAX as usize;
+        let centroid_byte_size = 8 * std::mem::size_of::<f32>();
+        let centroid_build_params = BuildParams::default();
+        let quantized_build_params = BuildParams::default();
+        let quantizer_search_params = SearchParams::default();
+
+        let pq = create_pq::<
+            NewEuclideanDistance8x8,
+            NewMemoizedComparator128,
+            NewDotProductCentroidDistanceCalculator8,
+            _,
+            _,
+        >(
+            &vector_indexable,
+            vector_stream,
+            centroid_count,
+            centroid_byte_size,
+            &centroid_build_params,
+            &quantized_build_params,
+            quantizer_search_params,
+            0x533D,
+        );
     }
 }

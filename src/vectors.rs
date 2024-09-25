@@ -58,6 +58,10 @@ impl Vectors {
     pub fn data(&self) -> &[u8] {
         &self.data
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        (0..self.num_vecs()).map(|i| &self[i])
+    }
 }
 
 impl Index<usize> for Vectors {

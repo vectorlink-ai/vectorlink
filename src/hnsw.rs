@@ -313,7 +313,7 @@ mod tests {
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);
         let mut sp = SearchParams::default();
-        sp.circulant_parameter_count = 4;
+        sp.circulant_parameter_count = 8;
         sp.parallel_visit_count = 12;
 
         for i in 0..10 {

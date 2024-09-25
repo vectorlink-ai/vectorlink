@@ -3,6 +3,7 @@
 pub mod bitmap;
 pub mod comparator;
 pub mod hnsw;
+pub mod index;
 pub mod layer;
 pub mod memoize;
 pub mod params;

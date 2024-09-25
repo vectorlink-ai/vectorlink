@@ -15,6 +15,7 @@ use crate::{
 
 pub struct Pq {
     centroids: Vectors,
+    quantized_vectors: Vectors,
     memoized_distances: MemoizedCentroidDistances,
     quantized_hnsw: Hnsw,
     quantizer: Quantizer,
@@ -27,7 +28,12 @@ impl Pq {
     pub fn quantizer(&self) -> &Quantizer {
         &self.quantizer
     }
-
+    pub fn memoized_distances(&self) -> &MemoizedCentroidDistances {
+        &self.memoized_distances
+    }
+    pub fn quantized_vectors(&self) -> &Vectors {
+        &self.quantized_vectors
+    }
     pub fn search_from_initial_quantized<C: VectorComparator>(
         &self,
         query_vec: Vector,
@@ -206,6 +212,7 @@ pub fn create_pq<
     std::mem::drop(quantized_comparator);
 
     Pq {
+        quantized_vectors,
         centroids,
         memoized_distances,
         quantized_hnsw,
@@ -218,7 +225,6 @@ mod tests {
 
     use crate::{
         comparator::{
-            DotProductCentroidDistanceCalculator8, EuclideanDistance8x8, MemoizedComparator128,
             NewDotProductCentroidDistanceCalculator8, NewEuclideanDistance8x8,
             NewMemoizedComparator128,
         },
@@ -239,7 +245,7 @@ mod tests {
         let quantized_build_params = BuildParams::default();
         let quantizer_search_params = SearchParams::default();
 
-        let pq = create_pq::<
+        let _pq = create_pq::<
             NewEuclideanDistance8x8,
             NewMemoizedComparator128,
             NewDotProductCentroidDistanceCalculator8,

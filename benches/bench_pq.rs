@@ -4,8 +4,9 @@ extern crate test;
 use hnsw_redux::{
     comparator::{
         EuclideanDistance8x8, NewDotProductCentroidDistanceCalculator8, NewEuclideanDistance8x8,
-        NewMemoizedComparator128,
+        NewMemoizedComparator128, QuantizedVectorComparatorConstructor,
     },
+    index::{Index, Searcher},
     params::{BuildParams, SearchParams},
     pq::{create_pq, VectorRangeIndexableForVectors},
     test_util::random_vectors,
@@ -41,12 +42,8 @@ fn bench_pq(b: &mut Bencher) {
         quantizer_search_params,
         0x533D,
     );
-
+    let index = Index::Pq1024x8 { pq, vectors: vecs };
     let vec = &random_vectors(1, 1024, 0x12345)[0];
-    let mut quantized = vec![0_u8; 256];
-    let comparator = EuclideanDistance8x8::new(pq.centroids());
-    pq.quantizer().quantize(vec, &comparator, &mut quantized);
-
     let sp = SearchParams::default();
-    b.iter(|| pq.search_from_initial_quantized(Vector::Slice(&quantized), &sp, &comparator));
+    b.iter(|| index.search(Vector::Slice(vec), &sp));
 }

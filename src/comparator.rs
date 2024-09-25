@@ -20,9 +20,14 @@ impl<'a> CosineDistance1024<'a> {
 }
 
 impl<'a> VectorComparator for CosineDistance1024<'a> {
-    #[inline]
+    #[inline(always)]
     fn num_vecs(&self) -> usize {
         self.vectors.num_vecs()
+    }
+
+    #[inline(always)]
+    fn vector_byte_size() -> usize {
+        1024 * std::mem::size_of::<f32>()
     }
 
     #[inline(always)]
@@ -101,9 +106,14 @@ impl<'a> CosineDistance1536<'a> {
 }
 
 impl<'a> VectorComparator for CosineDistance1536<'a> {
-    #[inline]
+    #[inline(always)]
     fn num_vecs(&self) -> usize {
         self.vectors.num_vecs()
+    }
+
+    #[inline(always)]
+    fn vector_byte_size() -> usize {
+        1536 * std::mem::size_of::<f32>()
     }
 
     #[inline(always)]
@@ -185,6 +195,11 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     #[inline]
     fn num_vecs(&self) -> usize {
         self.vectors.num_vecs()
+    }
+
+    #[inline(always)]
+    fn vector_byte_size() -> usize {
+        8 * std::mem::size_of::<f32>()
     }
 
     #[inline]
@@ -313,12 +328,19 @@ impl<'a> VectorComparator for MemoizedComparator128<'a> {
         result[0] = self.compare_vec_unstored(left, right);
     }
 
+    #[inline(always)]
     fn vec_group_size() -> usize {
         1
     }
 
+    #[inline(always)]
     fn num_vecs(&self) -> usize {
         self.quantized_vectors.num_vecs()
+    }
+
+    #[inline(always)]
+    fn vector_byte_size() -> usize {
+        128 * std::mem::size_of::<u16>()
     }
 
     #[inline(always)]

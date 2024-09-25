@@ -65,6 +65,7 @@ pub trait VectorComparator: Sync {
     fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]);
     fn vec_group_size() -> usize;
     fn num_vecs(&self) -> usize;
+    fn vector_byte_size() -> usize;
 
     fn compare_vec_stored(&self, left: u32, right: u32) -> f32 {
         if left == right {

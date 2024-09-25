@@ -4,11 +4,11 @@ use rand::prelude::*;
 use rayon::prelude::*;
 
 use crate::{
-    comparator::{CosineDistance1024, EuclideanDistance8x8, VectorComparatorConstructor},
+    comparator::VectorComparatorConstructor,
     hnsw::{BuildParams, Hnsw},
-    layer::VectorComparator,
+    layer::{SearchParams, VectorComparator},
     memoize::{CentroidDistanceCalculator, MemoizedCentroidDistances},
-    vectors::Vectors,
+    vectors::{Vector, Vectors},
 };
 
 pub struct Pq {
@@ -77,35 +77,64 @@ pub struct CentroidConstructor1024x8;
 
 pub struct Quantizer {
     hnsw: Hnsw,
+    sp: SearchParams,
 }
 
 impl Quantizer {
-    fn quantize<C: VectorComparator>(&self, unquantized: &[u8], comparator: &C) -> Vec<u8> {
-        todo!()
+    pub fn quantize<C: VectorComparator>(&self, unquantized: &[u8], comparator: &C) -> Vec<u8> {
+        debug_assert_eq!(0, unquantized.len() % C::vector_byte_size());
+        let mut quantized: Vec<u16> = unquantized
+            .par_chunks(C::vector_byte_size())
+            .map(|chunk| {
+                self.hnsw
+                    .search_from_initial(Vector::Slice(chunk), &self.sp, comparator)
+                    .first()
+                    .0 as u16
+            })
+            .collect();
+
+        let cast = unsafe {
+            Vec::from_raw_parts(
+                quantized.as_mut_ptr() as *mut u8,
+                quantized.len() * 2,
+                quantized.capacity() / 2,
+            )
+        };
+        std::mem::forget(quantized);
+
+        cast
     }
 
-    fn reconstruct<C: VectorComparator>(&self, quantized: &[u8], comparator: &C) -> Vec<u8> {
-        todo!()
+    pub fn reconstruct<C: VectorComparator>(&self, quantized: &[u8], vectors: &Vectors) -> Vec<u8> {
+        let cast = unsafe {
+            std::slice::from_raw_parts(quantized.as_ptr() as *const u16, quantized.len() * 2)
+        };
+        let reconstructed_byte_size = quantized.len() * vectors.vector_byte_size();
+        let mut result: Vec<u8> = Vec::with_capacity(reconstructed_byte_size);
+        for &c in cast {
+            result.extend_from_slice(&vectors[c as usize]);
+        }
+
+        result
     }
 
-    fn quantize_all<V: VectorIter>, C: VectorComparator>(
+    pub fn quantize_all<V: Iterator<Item = Vec<u8>>, C: VectorComparator>(
         &self,
-        total_byte_size : usize,
-        vecs: VectorIter,
+        num_vecs: usize,
+        vecs: V,
         comparator: &C,
     ) -> Vectors {
-        let data = Vec::with_capacity(total_byte_size);
+        let total_byte_size = num_vecs * C::vector_byte_size();
+        let mut data = Vec::with_capacity(total_byte_size);
         for v in vecs {
             let quantized = self.quantize(&v, comparator);
             data.extend(quantized);
         }
-        Vectors{
-            vectors: data
-        }
+        Vectors::new(data, C::vector_byte_size())
     }
 
-    fn new(hnsw: Hnsw) -> Self {
-        Self { hnsw }
+    fn new(hnsw: Hnsw, sp: SearchParams) -> Self {
+        Self { hnsw, sp }
     }
 }
 
@@ -118,11 +147,12 @@ pub fn create_pq<
     CDC: CentroidDistanceCalculator,
 >(
     vectors: &'a VRI,
-    vector_stream: &'a V,
+    vector_stream: V,
     centroid_count: usize,
     centroid_byte_size: usize,
     centroid_build_params: &BuildParams,
     quantized_build_params: &BuildParams,
+    quantizer_search_params: SearchParams,
     cdc: CDC,
     seed: u64,
 ) -> Pq {
@@ -130,8 +160,9 @@ pub fn create_pq<
     let centroid_comparator = CentroidComparatorConstructor::new_from_vecs(&centroids);
 
     let centroid_hnsw = Hnsw::generate(centroid_build_params, &centroid_comparator);
-    let quantizer = Quantizer::new(centroid_hnsw);
-    let quantized_vectors = quantizer.quantize_all(vector_stream, &centroid_comparator);
+    let quantizer = Quantizer::new(centroid_hnsw, quantizer_search_params);
+    let quantized_vectors =
+        quantizer.quantize_all(vectors.num_vecs(), vector_stream, &centroid_comparator);
     let quantized_comparator = QuantizedComparatorConstructor::new_from_vecs(&quantized_vectors);
     let quantized_hnsw = Hnsw::generate(quantized_build_params, &quantized_comparator);
     let memoized_distances = MemoizedCentroidDistances::new(&cdc);
@@ -145,11 +176,7 @@ pub fn create_pq<
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        comparator::{CosineDistance1024, EuclideanDistance8x8},
-        hnsw::Hnsw,
-        test_util::{random_vectors, random_vectors_normalized},
-    };
+    use crate::test_util::random_vectors;
 
     use super::*;
 

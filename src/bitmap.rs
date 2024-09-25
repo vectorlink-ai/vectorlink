@@ -23,21 +23,23 @@ impl Bitmap {
         elt & (1 << (index % 64)) != 0
     }
 
-    pub fn set(&self, index: usize) {
+    pub fn set(&mut self, index: usize) {
         if index == u32::MAX as usize {
             return;
         }
-        // let's pretend this is actually an atomic
-        let elt = &self.data[index / 64];
+        let elt = &mut self.data[index / 64];
+        *elt |= 1 << (index % 64);
 
+        /*
         unsafe {
             let cast: &AtomicU64 = AtomicU64::from_ptr(elt as *const u64 as *mut u64);
             cast.fetch_or(1 << (index % 64), atomic::Ordering::Relaxed);
         }
+        */
     }
 
-    pub fn set_from_ids(&self, ids: &[u32]) {
-        ids.par_iter().for_each(|id| self.set(*id as usize));
+    pub fn set_from_ids(&mut self, ids: &[u32]) {
+        ids.iter().for_each(|id| self.set(*id as usize));
     }
 }
 
@@ -47,7 +49,7 @@ mod tests {
     #[test]
     fn do_a_bitmap_once() {
         let idx = 42;
-        let bitmap = Bitmap::new(100);
+        let mut bitmap = Bitmap::new(100);
 
         assert!(!bitmap.check(idx));
         assert!(!bitmap.check(idx + 1));
@@ -58,7 +60,7 @@ mod tests {
 
     #[test]
     fn do_a_bitmap_set_all() {
-        let bitmap = Bitmap::new(100);
+        let mut bitmap = Bitmap::new(100);
 
         let to_set: Vec<u32> = vec![1, 1, 2, 3, 5, 8, 13, 21];
 

@@ -154,18 +154,18 @@ impl Layer {
         );
         let (seeds, n_pops) = visit_queue.pop_first_n(search_params.parallel_visit_count);
         let number_of_neighbors = n_pops * total_neighborhood_size;
-        let seeds_iter = seeds.into_par_iter().map(|(id, _)| id);
-        let ids_iter = ids_slice[0..number_of_neighbors].par_chunks_mut(total_neighborhood_size);
+        let seeds_iter = seeds.into_iter().map(|(id, _)| id);
+        let ids_iter = ids_slice[0..number_of_neighbors].chunks_mut(total_neighborhood_size);
         let priorities_iter =
-            priorities_slice[0..number_of_neighbors].par_chunks_mut(total_neighborhood_size);
+            priorities_slice[0..number_of_neighbors].chunks_mut(total_neighborhood_size);
 
         let zipped = seeds_iter.zip(ids_iter.zip(priorities_iter));
 
         zipped
             .flat_map(|(neighborhood, (ids_chunk, priorities_chunk))| {
                 ids_chunk
-                    .par_chunks_mut(C::vec_group_size())
-                    .zip(priorities_chunk.par_chunks_mut(C::vec_group_size()))
+                    .chunks_mut(C::vec_group_size())
+                    .zip(priorities_chunk.chunks_mut(C::vec_group_size()))
                     .enumerate()
                     .map(move |(neighbor_group, (ids_out, priorities_out))| {
                         (neighborhood, neighbor_group, ids_out, priorities_out)
@@ -214,7 +214,7 @@ impl Layer {
         let visit_queue = uninitalized_visit_queue;
 
         // bitmap does mutate, but it's internal mutability
-        let seen = Bitmap::new(self.number_of_neighborhoods());
+        let mut seen = Bitmap::new(self.number_of_neighborhoods());
         let mut did_something = true;
 
         while did_something {

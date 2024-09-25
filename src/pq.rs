@@ -43,6 +43,16 @@ impl Pq {
         self.quantized_hnsw
             .search_from_initial(query_vec, sp, comparator)
     }
+    pub fn test_recall<C: VectorComparator>(
+        &self,
+        proportion: f32,
+        sp: &SearchParams,
+        comparator: &C,
+        seed: u64,
+    ) -> f32 {
+        self.quantized_hnsw
+            .test_recall(proportion, sp, comparator, seed)
+    }
 }
 
 pub trait VectorRangeIndexable {

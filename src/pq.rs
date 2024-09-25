@@ -117,7 +117,7 @@ impl Quantizer {
         result
     }
 
-    pub fn quantize_all<'a, V: Iterator<Item = &'a [u8]>, C: VectorComparator>(
+    pub fn quantize_all<'a, V: Iterator<Item = &'a [u8]> + Send, C: VectorComparator>(
         &self,
         num_vecs: usize,
         vecs: V,
@@ -125,16 +125,17 @@ impl Quantizer {
     ) -> Vectors {
         let total_byte_size = num_vecs * C::vector_byte_size();
         let mut data = Vec::with_capacity(total_byte_size);
-        for (ix, (v, out)) in vecs
-            .zip(data.spare_capacity_mut().chunks_mut(C::vector_byte_size()))
+        vecs.zip(data.spare_capacity_mut().chunks_mut(C::vector_byte_size()))
             .enumerate()
-        {
-            if ix % 1000 == 0 {
-                eprintln!("quantizing {ix}");
-            }
-            let out_cast: &mut [u8] = unsafe { std::mem::transmute(out) };
-            self.quantize(v, comparator, out_cast);
-        }
+            .par_bridge()
+            .for_each(|(ix, (v, out))| {
+                if ix % 10000 == 0 {
+                    eprintln!("quantizing {ix}");
+                }
+                let out_cast: &mut [u8] = unsafe { std::mem::transmute(out) };
+                self.quantize(&v, comparator, out_cast);
+            });
+
         unsafe {
             data.set_len(total_byte_size);
         }
@@ -152,7 +153,7 @@ pub fn create_pq<
     QuantizedComparatorConstructor: QuantizedVectorComparatorConstructor,
     CDC: CentroidDistanceCalculatorConstructor,
     VRI: VectorRangeIndexable,
-    V: Iterator<Item = &'a [u8]>,
+    V: Iterator<Item = &'a [u8]> + Send,
 >(
     vectors: &'a VRI,
     vector_stream: V,

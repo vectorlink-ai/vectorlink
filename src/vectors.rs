@@ -1,4 +1,6 @@
-use std::ops::Index;
+use std::{ops::Index, sync::Arc};
+
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Vector<'a> {
@@ -6,9 +8,9 @@ pub enum Vector<'a> {
     Id(u32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Vectors {
-    data: Vec<u8>,
+    data: Arc<Vec<u8>>,
     vector_byte_size: usize,
 }
 
@@ -16,7 +18,7 @@ impl Vectors {
     pub fn new(data: Vec<u8>, vector_byte_size: usize) -> Self {
         assert_eq!(0, data.len() % vector_byte_size);
         Self {
-            data,
+            data: Arc::new(data),
             vector_byte_size,
         }
     }

@@ -359,20 +359,14 @@ impl<'a> VectorComparator for MemoizedComparator128<'a> {
     }
 }
 
-pub trait VectorComparatorConstructor {
-    type Output<'a>: VectorComparator
-    where
-        Self: 'a;
-
-    fn new_from_vecs(vecs: &Vectors) -> Self::Output<'_>;
+pub trait VectorComparatorConstructor<'a>: VectorComparator {
+    fn new_from_vecs(vecs: &'a Vectors) -> Self;
 }
 
 pub struct EuclideanDistance8x8Constructor;
 
-impl VectorComparatorConstructor for EuclideanDistance8x8Constructor {
-    type Output<'a> = EuclideanDistance8x8<'a>;
-
-    fn new_from_vecs(vectors: &Vectors) -> Self::Output<'_> {
+impl<'a> VectorComparatorConstructor<'a> for EuclideanDistance8x8<'a> {
+    fn new_from_vecs(vectors: &'a Vectors) -> Self {
         EuclideanDistance8x8 { vectors }
     }
 }

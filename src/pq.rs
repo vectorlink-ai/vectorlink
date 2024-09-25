@@ -107,8 +107,8 @@ pub fn create_pq<
     'a,
     VRI: VectorRangeIndexable,
     V: VectorStreamable,
-    CentroidComparatorConstructor: VectorComparatorConstructor,
-    QuantizedComparatorConstructor: VectorComparatorConstructor,
+    CentroidComparatorConstructor: for<'b> VectorComparatorConstructor<'b>,
+    QuantizedComparatorConstructor: for<'b> VectorComparatorConstructor<'b>,
     CDC: CentroidDistanceCalculator,
 >(
     vectors: &'a VRI,

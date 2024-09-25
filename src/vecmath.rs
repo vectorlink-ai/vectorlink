@@ -132,19 +132,18 @@ euclidean_small_64!(multi_euclidean_4x16, 16);
 euclidean_small_64!(multi_euclidean_8x8, 8);
 euclidean_small_64!(multi_euclidean_16x4, 4);
 
-pub fn partial_euclidean_distance<const N: usize>(left: &[f32; N], right: &[f32; N]) -> f32
+pub fn partial_dot_product<const N: usize>(left: &[f32; N], right: &[f32; N]) -> f32
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    let left_simd: Simd<f32, N> = Simd::from_slice(left);
+    let mut left_simd: Simd<f32, N> = Simd::from_slice(left);
     let right_simd: Simd<f32, N> = Simd::from_slice(right);
-    let mut dif = left_simd - right_simd;
-    dif *= dif;
+    left_simd *= right_simd;
 
-    dif.reduce_sum()
+    left_simd.reduce_sum()
 }
 
-pub fn partial_euclidean_norm<const N: usize>(vec: &[f32; N]) -> f32
+pub fn partial_dot_product_norm<const N: usize>(vec: &[f32; N]) -> f32
 where
     LaneCount<N>: SupportedLaneCount,
 {

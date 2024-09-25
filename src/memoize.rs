@@ -58,12 +58,12 @@ pub fn triangle_lookup_length(n: usize) -> usize {
 
 pub trait CentroidDistanceCalculator: Sync {
     fn num_centroids(&self) -> usize;
-    fn calculate_centroid_distance(&self, c1: u16, c2: u16) -> f16;
-    fn calculate_centroid_squared_norm(&self, c: u16) -> f16;
+    fn calculate_partial_dot_product(&self, c1: u16, c2: u16) -> f16;
+    fn calculate_partial_dot_product_norm(&self, c: u16) -> f16;
 }
 
 pub struct MemoizedCentroidDistances {
-    distances: Vec<f16>,
+    dot_products: Vec<f16>,
     norms: Vec<f16>,
     size: usize,
 }
@@ -85,17 +85,17 @@ impl MemoizedCentroidDistances {
                     if i > 65535 || j > 65535 {
                         panic!("oh no {i} {j}");
                     }
-                    elt.write(calculator.calculate_centroid_distance(i as u16, j as u16));
+                    elt.write(calculator.calculate_partial_dot_product(i as u16, j as u16));
                 });
         }
         unsafe {
             distances.set_len(memoized_array_length);
         }
         let norms: Vec<_> = (0..size)
-            .map(|i| calculator.calculate_centroid_squared_norm(i as u16))
+            .map(|i| calculator.calculate_partial_dot_product_norm(i as u16))
             .collect();
         Self {
-            distances,
+            dot_products: distances,
             norms,
             size,
         }
@@ -111,7 +111,7 @@ impl MemoizedCentroidDistances {
             std::cmp::Ordering::Less => index_to_offset(self.size, i as usize, j as usize),
             std::cmp::Ordering::Greater => index_to_offset(self.size, j as usize, i as usize),
         };
-        let distance: f16 = self.distances[offset];
+        let distance: f16 = self.dot_products[offset];
         distance
     }
 
@@ -121,12 +121,9 @@ impl MemoizedCentroidDistances {
     }
 
     #[inline]
-    pub fn lookup_centroid_distances(&self, i: u16x8, j: u16x8) -> f32x8 {
+    pub fn lookup_centroid_dot_products(&self, i: u16x8, j: u16x8) -> f32x8 {
         let equals_mask = i.simd_eq(j);
-        // early bail for equals
-        // TODO - this is just copied from other code but surely if
-        // two are equal then the centroid distance should just be 0?
-        //let norms = self.lookup_centroid_squared_norms_masked(i, equals_mask.cast());
+        let norms = self.lookup_centroid_partial_norms_masked(i, equals_mask.cast());
 
         let less_mask = i.simd_lt(j);
         // gotta flip the greaters with the lessers
@@ -135,21 +132,21 @@ impl MemoizedCentroidDistances {
         let j = less_mask.select(j, temp);
 
         let offsets = indexes_to_offsets(self.size, i.cast(), j.cast());
-        let distances_slice: &[u16] = unsafe { std::mem::transmute(self.distances.as_slice()) };
+        let dot_products_slice: &[u16] =
+            unsafe { std::mem::transmute(self.dot_products.as_slice()) };
         let gathered = u16x8::gather_select(
-            distances_slice,
+            dot_products_slice,
             (!equals_mask).cast(),
             offsets.cast(),
             u16x8::splat(0),
         );
 
         let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
-        let distances = f32x8::from(result);
+        let partial_dot_products = f32x8::from(result);
 
         // we now have two simd registers with mutually exclusive lanes filled.
         // summing them should just give us a single register with all lanes filled.
-        //norms + distances
-        distances
+        norms + partial_dot_products
     }
 
     #[inline]
@@ -165,7 +162,7 @@ impl MemoizedCentroidDistances {
 
     #[inline]
     #[allow(unused)]
-    fn lookup_centroid_squared_norms_masked(&self, i: u16x8, mask: masksizex8) -> f32x8 {
+    fn lookup_centroid_partial_norms_masked(&self, i: u16x8, mask: masksizex8) -> f32x8 {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
@@ -254,10 +251,10 @@ mod offsettest {
         fn num_centroids(&self) -> usize {
             (u16::MAX as usize) + 1
         }
-        fn calculate_centroid_distance(&self, left: u16, right: u16) -> f16 {
+        fn calculate_partial_dot_product(&self, left: u16, right: u16) -> f16 {
             scaled_multiple(left as usize, right as usize)
         }
-        fn calculate_centroid_squared_norm(&self, vec: u16) -> f16 {
+        fn calculate_partial_dot_product_norm(&self, vec: u16) -> f16 {
             let vec = vec as usize;
             scaled_multiple(vec, vec)
         }
@@ -310,7 +307,7 @@ mod offsettest {
             .for_each(|(a, b)| {
                 let simd_a = u16x8::from_slice(a);
                 let simd_b = u16x8::from_slice(b);
-                let distances = distances.lookup_centroid_distances(simd_a, simd_b);
+                let distances = distances.lookup_centroid_dot_products(simd_a, simd_b);
 
                 for (distance, (a, b)) in
                     distances.to_array().into_iter().zip(a.iter().zip(b.iter()))

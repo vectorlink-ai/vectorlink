@@ -160,25 +160,29 @@ impl<'a> VectorComparator for EuclideanDistance8x8<'a> {
     }
 }
 
-impl<'a> CentroidDistanceCalculator for EuclideanDistance8x8<'a> {
+pub struct DotProductCentroidDistanceCalculator8x8<'a> {
+    vectors: &'a Vectors,
+}
+
+impl<'a> CentroidDistanceCalculator for DotProductCentroidDistanceCalculator8x8<'a> {
     fn num_centroids(&self) -> usize {
         self.vectors.num_vecs()
     }
 
-    fn calculate_centroid_distance(&self, c1: u16, c2: u16) -> f16 {
+    fn calculate_partial_dot_product(&self, c1: u16, c2: u16) -> f16 {
         let left = self.vectors.get::<[f32; 8]>(c1 as usize).unwrap();
         let right = self.vectors.get::<[f32; 8]>(c2 as usize).unwrap();
-        vecmath::partial_euclidean_distance(left, right) as f16
+        vecmath::partial_dot_product(left, right) as f16
     }
 
-    fn calculate_centroid_squared_norm(&self, c: u16) -> f16 {
+    fn calculate_partial_dot_product_norm(&self, c: u16) -> f16 {
         let vec = self.vectors.get::<[f32; 8]>(c as usize).unwrap();
-        vecmath::partial_euclidean_norm(vec) as f16
+        vecmath::partial_dot_product_norm(vec) as f16
     }
 }
 
 pub struct MemoizedComparator128<'a> {
-    vectors: &'a Vectors,
+    quantized_vectors: &'a Vectors,
     memoized: &'a MemoizedCentroidDistances,
 }
 
@@ -186,7 +190,7 @@ impl<'a> MemoizedComparator128<'a> {
     #[inline(always)]
     #[unroll_for_loops]
     fn compare_raw(&self, left: &[u16; 128], right: &[u16; 128]) -> f32 {
-        let mut partial_distance_accumulator = f32x8::splat(0.0);
+        let mut partial_dot_product_accumulator = f32x8::splat(0.0);
         let mut squared_norm1_accumulator = f32x8::splat(0.0);
         let mut squared_norm2_accumulator = f32x8::splat(0.0);
         for i in 0..16 {
@@ -195,18 +199,18 @@ impl<'a> MemoizedComparator128<'a> {
             let simd_left = u16x8::from_slice(&left[offset..offset + SIZE]);
             let simd_right = u16x8::from_slice(&right[offset..offset + SIZE]);
 
-            partial_distance_accumulator += self
+            partial_dot_product_accumulator += self
                 .memoized
-                .lookup_centroid_distances(simd_left, simd_right);
+                .lookup_centroid_dot_products(simd_left, simd_right);
             squared_norm1_accumulator += self.memoized.lookup_centroid_squared_norms(simd_left);
             squared_norm2_accumulator += self.memoized.lookup_centroid_squared_norms(simd_right);
         }
 
-        let distance = partial_distance_accumulator.reduce_sum().sqrt();
+        let dot_product = partial_dot_product_accumulator.reduce_sum();
         let norm1 = squared_norm1_accumulator.reduce_sum().sqrt();
         let norm2 = squared_norm2_accumulator.reduce_sum().sqrt();
 
-        distance / (norm1 * norm2)
+        ((dot_product / (norm1 * norm2) - 1.0) / -2.0).clamp(0.0, 1.0)
     }
 }
 
@@ -233,7 +237,7 @@ impl<'a> VectorComparator for MemoizedComparator128<'a> {
     }
 
     fn num_vecs(&self) -> usize {
-        self.vectors.num_vecs()
+        self.quantized_vectors.num_vecs()
     }
 
     #[inline(always)]
@@ -241,9 +245,9 @@ impl<'a> VectorComparator for MemoizedComparator128<'a> {
         if left == right {
             return 0.0;
         }
-        if let Some(left) = self.vectors.get::<[u16; 128]>(left as usize) {
+        if let Some(left) = self.quantized_vectors.get::<[u16; 128]>(left as usize) {
             let right: &[u16; 128] = self
-                .vectors
+                .quantized_vectors
                 .get(right as usize)
                 .expect("You are comparing to an out-of-band id");
 
@@ -256,7 +260,7 @@ impl<'a> VectorComparator for MemoizedComparator128<'a> {
     #[inline(always)]
     fn compare_vec_stored_unstored(&self, stored: u32, unstored: &[u8]) -> f32 {
         debug_assert_eq!(unstored.len(), 128 * std::mem::size_of::<u16>());
-        if let Some(stored) = self.vectors.get::<[u16; 128]>(stored as usize) {
+        if let Some(stored) = self.quantized_vectors.get::<[u16; 128]>(stored as usize) {
             let unstored = &unsafe { *(unstored.as_ptr() as *const [u16; 128]) };
             self.compare_raw(stored, unstored)
         } else {

@@ -75,27 +75,33 @@ pub fn centroid_finder<V: VectorRangeIndexable>(
 
 pub struct CentroidConstructor1024x8;
 
-pub trait VectorStreamable {}
-
 pub struct Quantizer {
     hnsw: Hnsw,
 }
 
 impl Quantizer {
-    fn quantize<C: VectorComparator>(&self, unquantized: &[u8], comparator: &C) -> Vec<u16> {
+    fn quantize<C: VectorComparator>(&self, unquantized: &[u8], comparator: &C) -> Vec<u8> {
         todo!()
     }
 
-    fn reconstruct<C: VectorComparator>(&self, quantized: &[u16], comparator: &C) -> Vec<u8> {
+    fn reconstruct<C: VectorComparator>(&self, quantized: &[u8], comparator: &C) -> Vec<u8> {
         todo!()
     }
 
-    fn quantize_all<C: VectorComparator, V: VectorStreamable>(
+    fn quantize_all<V: VectorIter>, C: VectorComparator>(
         &self,
-        vecs: &V,
+        total_byte_size : usize,
+        vecs: VectorIter,
         comparator: &C,
     ) -> Vectors {
-        todo!();
+        let data = Vec::with_capacity(total_byte_size);
+        for v in vecs {
+            let quantized = self.quantize(&v, comparator);
+            data.extend(quantized);
+        }
+        Vectors{
+            vectors: data
+        }
     }
 
     fn new(hnsw: Hnsw) -> Self {
@@ -106,7 +112,7 @@ impl Quantizer {
 pub fn create_pq<
     'a,
     VRI: VectorRangeIndexable,
-    V: VectorStreamable,
+    V: Iterator<Item = Vec<u8>>,
     CentroidComparatorConstructor: for<'b> VectorComparatorConstructor<'b>,
     QuantizedComparatorConstructor: for<'b> VectorComparatorConstructor<'b>,
     CDC: CentroidDistanceCalculator,

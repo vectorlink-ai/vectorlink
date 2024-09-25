@@ -54,6 +54,10 @@ impl Vectors {
             unsafe { &mut *(self.data.as_ptr().add(offset) as *mut T) }
         }
     }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
 }
 
 impl Index<usize> for Vectors {

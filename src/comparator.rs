@@ -358,3 +358,21 @@ impl<'a> VectorComparator for MemoizedComparator128<'a> {
         self.compare_raw(left, right)
     }
 }
+
+pub trait VectorComparatorConstructor {
+    type Output<'a>: VectorComparator
+    where
+        Self: 'a;
+
+    fn new_from_vecs(vecs: &Vectors) -> Self::Output<'_>;
+}
+
+pub struct EuclideanDistance8x8Constructor;
+
+impl VectorComparatorConstructor for EuclideanDistance8x8Constructor {
+    type Output<'a> = EuclideanDistance8x8<'a>;
+
+    fn new_from_vecs(vectors: &Vectors) -> Self::Output<'_> {
+        EuclideanDistance8x8 { vectors }
+    }
+}

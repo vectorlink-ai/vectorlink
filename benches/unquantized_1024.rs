@@ -2,8 +2,8 @@
 extern crate test;
 use hnsw_redux::{
     comparator::CosineDistance1024,
-    hnsw::{BuildParams, Hnsw},
-    layer::SearchParams,
+    hnsw::Hnsw,
+    params::{BuildParams, SearchParams},
     test_util::random_vectors,
     vectors::Vector,
 };

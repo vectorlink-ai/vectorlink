@@ -3,8 +3,8 @@
 extern crate test;
 use hnsw_redux::{
     comparator::{NewEuclideanDistance8x8, VectorComparatorConstructor},
-    hnsw::{BuildParams, Hnsw},
-    layer::SearchParams,
+    hnsw::Hnsw,
+    params::{BuildParams, SearchParams},
     pq::{centroid_finder, Quantizer, VectorRangeIndexableForVectors},
     test_util::random_vectors,
 };

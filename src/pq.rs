@@ -11,13 +11,34 @@ use crate::{
         CentroidDistanceCalculator, CentroidDistanceCalculatorConstructor,
         MemoizedCentroidDistances,
     },
+    ring_queue::OrderedRingQueue,
     vectors::{Vector, Vectors},
 };
 
 pub struct Pq {
+    centroids: Vectors,
     memoized_distances: MemoizedCentroidDistances,
     quantized_hnsw: Hnsw,
     quantizer: Quantizer,
+}
+
+impl Pq {
+    pub fn centroids(&self) -> &Vectors {
+        &self.centroids
+    }
+    pub fn quantizer(&self) -> &Quantizer {
+        &self.quantizer
+    }
+
+    pub fn search_from_initial_quantized<C: VectorComparator>(
+        &self,
+        query_vec: Vector,
+        sp: &SearchParams,
+        comparator: &C,
+    ) -> OrderedRingQueue {
+        self.quantized_hnsw
+            .search_from_initial(query_vec, sp, comparator)
+    }
 }
 
 pub trait VectorRangeIndexable {
@@ -182,9 +203,12 @@ pub fn create_pq<
     let quantized_hnsw = Hnsw::generate(quantized_build_params, &quantized_comparator);
     eprintln!("generated quantized hnsw");
 
+    std::mem::drop(centroid_comparator);
+    std::mem::drop(centroid_distance_calculator);
     std::mem::drop(quantized_comparator);
 
     Pq {
+        centroids,
         memoized_distances,
         quantized_hnsw,
         quantizer,

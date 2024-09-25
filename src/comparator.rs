@@ -302,7 +302,7 @@ impl<'a> MemoizedComparator128<'a> {
         let mut squared_norm1_accumulator = f32x8::splat(0.0);
         let mut squared_norm2_accumulator = f32x8::splat(0.0);
         for i in 0..16 {
-            const SIZE: usize = std::mem::size_of::<u16x8>();
+            const SIZE: usize = 8;
             let offset = i * SIZE;
             let simd_left = u16x8::from_slice(&left[offset..offset + SIZE]);
             let simd_right = u16x8::from_slice(&right[offset..offset + SIZE]);

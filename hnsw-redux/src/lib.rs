@@ -9,6 +9,7 @@ pub mod memoize;
 pub mod params;
 pub mod pq;
 pub mod ring_queue;
+pub mod serialize;
 pub mod test_util;
 pub mod vecmath;
 pub mod vectors;

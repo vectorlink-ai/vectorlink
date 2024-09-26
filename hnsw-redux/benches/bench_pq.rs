@@ -6,7 +6,7 @@ use hnsw_redux::{
         EuclideanDistance8x8, NewDotProductCentroidDistanceCalculator8, NewEuclideanDistance8x8,
         NewMemoizedComparator128, QuantizedVectorComparatorConstructor,
     },
-    index::{Index, Index},
+    index::{Index, IndexConfiguration, Pq1024x8},
     params::{BuildParams, SearchParams},
     pq::{create_pq, VectorRangeIndexableForVectors},
     test_util::random_vectors,
@@ -42,7 +42,7 @@ fn bench_pq(b: &mut Bencher) {
         quantizer_search_params,
         0x533D,
     );
-    let index = Index::Pq1024x8 { pq, vectors: vecs };
+    let index = IndexConfiguration::Pq1024x8(Pq1024x8::new(pq, vecs));
     let vec = &random_vectors(1, 1024, 0x12345)[0];
     let sp = SearchParams::default();
     b.iter(|| index.search(Vector::Slice(vec), &sp));

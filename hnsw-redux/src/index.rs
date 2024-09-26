@@ -35,9 +35,19 @@ pub struct Pq1024x8 {
     pq: Pq,
     vectors: Vectors,
 }
+impl Pq1024x8 {
+    pub fn new(pq: Pq, vectors: Vectors) -> Self {
+        Self { pq, vectors }
+    }
+}
 pub struct Hnsw1024 {
     hnsw: Hnsw,
     vectors: Vectors,
+}
+impl Hnsw1024 {
+    pub fn new(hnsw: Hnsw, vectors: Vectors) -> Self {
+        Self { hnsw, vectors }
+    }
 }
 
 #[enum_dispatch(Index)]

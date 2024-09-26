@@ -41,10 +41,12 @@ impl Vectors {
     }
 
     pub fn load<P: AsRef<Path>>(directory: P, identity: &str) -> io::Result<Self> {
+        eprintln!("loading from {:?} as {identity}", directory.as_ref());
         let directory = directory.as_ref();
         let metadata_path = Self::meta_path(directory, identity);
         let meta: VectorsMetadata = serde_json::from_reader(File::open(metadata_path)?)?;
         let data = fs::read(Self::vec_path(directory, identity))?;
+        eprintln!("vector data loaded...");
         Ok(Self::new(data, meta.vector_byte_size))
     }
 }
@@ -104,6 +106,7 @@ impl Hnsw {
     }
 
     pub fn store<P: AsRef<Path>>(&self, directory: P) -> io::Result<()> {
+        eprintln!("storing inner hnsw");
         let directory = directory.as_ref();
         for (i, layer) in self.layers().iter().enumerate() {
             layer.store(directory, i)?;
@@ -165,20 +168,14 @@ impl Hnsw1024 {
     }
 
     pub fn store_hnsw<P: AsRef<Path>>(&self, hnsw_directory: P) -> io::Result<()> {
+        eprintln!("storing hnsw");
         let hnsw_root_directory = hnsw_directory.as_ref();
         let metadata = self.metadata();
-        serde_json::to_writer(
-            File::open(IndexConfiguration::meta_path(
-                &metadata.name,
-                hnsw_root_directory,
-            ))?,
-            &metadata,
-        )?;
-
-        self.hnsw().store(IndexConfiguration::hnsw_path(
-            &metadata.name,
-            hnsw_root_directory,
-        ))?;
+        let hnsw_path = IndexConfiguration::hnsw_path(&metadata.name, hnsw_root_directory);
+        let metadata_path = IndexConfiguration::meta_path(&metadata.name, hnsw_root_directory);
+        fs::create_dir_all(&hnsw_path)?;
+        serde_json::to_writer(File::create(metadata_path)?, &metadata)?;
+        self.hnsw().store(hnsw_path)?;
 
         Ok(())
     }
@@ -210,6 +207,7 @@ impl IndexConfiguration {
         }
     }
     pub fn store_hnsw<P: AsRef<Path>>(&self, hnsw_directory: P) -> io::Result<()> {
+        eprintln!("storing index configuration");
         match self {
             IndexConfiguration::Hnsw1024(hnsw) => hnsw.store_hnsw(hnsw_directory),
             IndexConfiguration::Pq1024x8(_pq) => todo!(),

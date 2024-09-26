@@ -20,7 +20,7 @@ struct Command {
 
 fn main() -> io::Result<()> {
     let args = Command::parse();
-
+    eprintln!("About to index vectors: {}", &args.name);
     let vectors = Vectors::load(&args.vector_directory, &args.name)?;
 
     let hnsw: IndexConfiguration =

@@ -28,6 +28,7 @@ impl Vectors {
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P, vector_byte_size: usize) -> io::Result<Self> {
+        eprintln!("Loading vectors from file {:?}", path.as_ref());
         let path = path.as_ref();
         let file = File::open(path)?;
         let file_size = file.metadata()?.size() as usize;

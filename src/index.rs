@@ -1,3 +1,5 @@
+use enum_dispatch::enum_dispatch;
+
 use crate::{
     comparator::{
         CosineDistance1024, EuclideanDistance8x8, NewMemoizedComparator128,
@@ -10,9 +12,17 @@ use crate::{
     vectors::{Vector, Vectors},
 };
 
+pub enum DispatchError {
+    FeatureDoesNotExist,
+}
+
+#[enum_dispatch]
 pub trait Searcher {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue;
     fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
+    fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
+        Err(DispatchError::FeatureDoesNotExist)
+    }
 }
 
 pub struct Pq1024x8 {
@@ -22,6 +32,12 @@ pub struct Pq1024x8 {
 pub struct Hnsw1024 {
     hnsw: Hnsw,
     vectors: Vectors,
+}
+
+#[enum_dispatch(Searcher)]
+pub enum IndexConfiguration {
+    Hnsw1024(Hnsw1024),
+    Pq1024x8(Pq1024x8),
 }
 
 impl Searcher for Pq1024x8 {

@@ -4,7 +4,6 @@ use std::{
     ops::Index,
     os::unix::fs::MetadataExt,
     path::Path,
-    sync::Arc,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -15,7 +14,7 @@ pub enum Vector<'a> {
 
 #[derive(Debug, Clone)]
 pub struct Vectors {
-    data: Arc<Vec<u8>>,
+    data: Vec<u8>,
     vector_byte_size: usize,
 }
 
@@ -23,7 +22,7 @@ impl Vectors {
     pub fn new(data: Vec<u8>, vector_byte_size: usize) -> Self {
         assert_eq!(0, data.len() % vector_byte_size);
         Self {
-            data: Arc::new(data),
+            data,
             vector_byte_size,
         }
     }
@@ -56,7 +55,7 @@ impl Vectors {
         }
 
         Ok(Self {
-            data: Arc::new(data),
+            data: data,
             vector_byte_size,
         })
     }

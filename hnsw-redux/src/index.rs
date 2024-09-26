@@ -1,3 +1,5 @@
+use std::path::Component;
+
 use enum_dispatch::enum_dispatch;
 
 use crate::{
@@ -6,7 +8,7 @@ use crate::{
         QuantizedVectorComparatorConstructor,
     },
     hnsw::Hnsw,
-    params::SearchParams,
+    params::{BuildParams, SearchParams},
     pq::Pq,
     ring_queue::OrderedRingQueue,
     vectors::{Vector, Vectors},
@@ -25,6 +27,10 @@ pub trait Index {
     }
 }
 
+pub trait NewIndex: Index {
+    fn generate(vectors: Vectors, bp: &BuildParams) -> Self;
+}
+
 pub struct Pq1024x8 {
     pq: Pq,
     vectors: Vectors,
@@ -34,7 +40,7 @@ pub struct Hnsw1024 {
     vectors: Vectors,
 }
 
-#[enum_dispatch(Searcher)]
+#[enum_dispatch(Index)]
 pub enum IndexConfiguration {
     Hnsw1024(Hnsw1024),
     Pq1024x8(Pq1024x8),
@@ -70,6 +76,15 @@ impl Index for Pq1024x8 {
             NewMemoizedComparator128::new(pq.quantized_vectors(), pq.memoized_distances());
         self.pq
             .test_recall(proportion, sp, &quantized_comparator, seed)
+    }
+}
+
+impl Hnsw1024 {
+    pub fn generate(vectors: Vectors, bp: &BuildParams) -> Self {
+        let comparator = CosineDistance1024::new(&vectors);
+        let hnsw = Hnsw::generate(bp, &comparator);
+
+        Hnsw1024 { hnsw, vectors }
     }
 }
 

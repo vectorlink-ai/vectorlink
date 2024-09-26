@@ -1,0 +1,11 @@
+[package]
+name = "hnsw-redux"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+enum_dispatch = "0.3.13"
+itertools = "0.13.0"
+rand = "0.8.5"
+rayon = "1.10.0"
+unroll = "0.1.5"

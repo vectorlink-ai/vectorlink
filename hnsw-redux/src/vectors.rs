@@ -1,4 +1,11 @@
-use std::{ops::Index, sync::Arc};
+use std::{
+    fs::File,
+    io::{self, Read},
+    ops::Index,
+    os::unix::fs::MetadataExt,
+    path::Path,
+    sync::Arc,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Vector<'a> {
@@ -19,6 +26,39 @@ impl Vectors {
             data: Arc::new(data),
             vector_byte_size,
         }
+    }
+
+    pub fn from_file<P: AsRef<Path>>(path: P, vector_byte_size: usize) -> io::Result<Self> {
+        let path = path.as_ref();
+        let file = File::open(path)?;
+        let file_size = file.metadata()?.size() as usize;
+        assert_eq!(
+            file_size % vector_byte_size,
+            0,
+            "vector file does not contain an exact amount of vectors"
+        );
+        let num_vecs = file_size / vector_byte_size;
+
+        Self::from_reader(file, num_vecs, vector_byte_size)
+    }
+
+    pub fn from_reader<R: Read>(
+        mut reader: R,
+        num_vecs: usize,
+        vector_byte_size: usize,
+    ) -> io::Result<Self> {
+        let len = num_vecs * vector_byte_size;
+        let mut data = Vec::with_capacity(len);
+        let slice: &mut [u8] = unsafe { std::mem::transmute(data.spare_capacity_mut()) };
+        reader.read_exact(slice)?;
+        unsafe {
+            data.set_len(len);
+        }
+
+        Ok(Self {
+            data: Arc::new(data),
+            vector_byte_size,
+        })
     }
 
     pub fn num_vecs(&self) -> usize {

@@ -11,8 +11,6 @@ use hnsw_redux::{
 #[command(version, about, long_about = None)]
 struct Command {
     #[arg(long)]
-    file: String,
-    #[arg(long)]
     vector_directory: String,
     #[arg(long)]
     hnsw_root_directory: String,
@@ -22,9 +20,8 @@ struct Command {
 
 fn main() -> io::Result<()> {
     let args = Command::parse();
-    let vectors = Vectors::from_file(&args.file, 4096)?;
 
-    vectors.store(&args.vector_directory, &args.name)?;
+    let vectors = Vectors::load(&args.vector_directory, &args.name)?;
 
     let hnsw: IndexConfiguration =
         Hnsw1024::generate(args.name, vectors, &BuildParams::default()).into();

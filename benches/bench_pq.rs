@@ -6,7 +6,7 @@ use hnsw_redux::{
         EuclideanDistance8x8, NewDotProductCentroidDistanceCalculator8, NewEuclideanDistance8x8,
         NewMemoizedComparator128, QuantizedVectorComparatorConstructor,
     },
-    index::{Index, Searcher},
+    index::{Index, Index},
     params::{BuildParams, SearchParams},
     pq::{create_pq, VectorRangeIndexableForVectors},
     test_util::random_vectors,

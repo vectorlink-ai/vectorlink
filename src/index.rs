@@ -17,7 +17,7 @@ pub enum DispatchError {
 }
 
 #[enum_dispatch]
-pub trait Searcher {
+pub trait Index {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue;
     fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
@@ -40,7 +40,7 @@ pub enum IndexConfiguration {
     Pq1024x8(Pq1024x8),
 }
 
-impl Searcher for Pq1024x8 {
+impl Index for Pq1024x8 {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
         let Pq1024x8 { pq, vectors: _ } = self;
         let quantized_comparator =
@@ -73,7 +73,7 @@ impl Searcher for Pq1024x8 {
     }
 }
 
-impl Searcher for Hnsw1024 {
+impl Index for Hnsw1024 {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
         let Hnsw1024 { hnsw, vectors } = self;
         let comparator = CosineDistance1024::new(vectors);

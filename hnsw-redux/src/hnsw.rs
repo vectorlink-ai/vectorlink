@@ -94,14 +94,13 @@ impl Hnsw {
             layer_nodes *= bp.order;
             eprintln!("layer nodes: {layer_nodes}");
             let last_layer = layer_nodes >= num_vecs;
-            eprintln!("last layer: {last_layer}");
             let vec_count = if last_layer { num_vecs } else { layer_nodes };
             let single_neighborhood_size = if last_layer {
-                eprintln!("generating final layer");
                 bp.bottom_neighborhood_size
             } else {
                 bp.neighborhood_size
             };
+            eprintln!("neighborhood size: {single_neighborhood_size}");
             eprintln!("vec_count: {vec_count}");
             let grouper = SearchGrouper {
                 comparator,
@@ -311,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    //#[ignore]
+    #[ignore]
     fn construct_unquantized_1536_hnsw() {
         let number_of_vecs = 100_000;
         let vecs = random_vectors_normalized::<1536>(number_of_vecs, 0x533D);

@@ -55,7 +55,7 @@ impl Vectors {
         }
 
         Ok(Self {
-            data: data,
+            data,
             vector_byte_size,
         })
     }

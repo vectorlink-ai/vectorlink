@@ -1,5 +1,6 @@
 #![feature(portable_simd)]
 #![feature(f16)]
+#![allow(clippy::field_reassign_with_default)]
 pub mod bitmap;
 pub mod comparator;
 pub mod hnsw;

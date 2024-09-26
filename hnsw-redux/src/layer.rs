@@ -118,6 +118,35 @@ impl Layer {
     pub fn single_neighborhood_size(&self) -> usize {
         self.single_neighborhood_size
     }
+
+    pub fn from_data(mut data: Vec<u8>, single_neighborhood_size: usize) -> Self {
+        data.shrink_to_fit();
+        assert!(data.capacity() == 0);
+        assert_eq!(
+            0,
+            data.len() % (4 * single_neighborhood_size),
+            "data is not a multiple of neighborhood size"
+        );
+        let neighborhoods = unsafe {
+            Vec::from_raw_parts(
+                data.as_mut_ptr() as *mut u32,
+                data.len() / std::mem::size_of::<u32>(),
+                0,
+            )
+        };
+
+        Self::new(neighborhoods, single_neighborhood_size)
+    }
+
+    pub fn data(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self.neighborhoods.as_ptr() as *const u8,
+                self.neighborhoods.len() * std::mem::size_of::<u32>(),
+            )
+        }
+    }
+
     pub fn search_from_seeds<C: VectorComparator>(
         &self,
         query_vec: Vector,

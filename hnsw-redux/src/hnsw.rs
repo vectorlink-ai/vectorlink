@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use crate::{
     layer::{Layer, VectorComparator, VectorGrouper, VectorSearcher},
     params::{BuildParams, SearchParams},
@@ -17,6 +15,9 @@ pub struct Hnsw {
 impl Hnsw {
     pub fn new(layers: Vec<Layer>) -> Self {
         Self { layers }
+    }
+    pub fn layers(&self) -> &[Layer] {
+        &self.layers
     }
 
     pub fn search<C: VectorComparator>(

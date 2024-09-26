@@ -1,5 +1,3 @@
-use std::path::Component;
-
 use enum_dispatch::enum_dispatch;
 
 use crate::{
@@ -34,22 +32,18 @@ pub trait NewIndex: Index {
 pub struct Pq1024x8 {
     pq: Pq,
     vectors: Vectors,
+    name: String,
 }
 impl Pq1024x8 {
-    pub fn new(pq: Pq, vectors: Vectors) -> Self {
-        Self { pq, vectors }
+    pub fn new(name: String, pq: Pq, vectors: Vectors) -> Self {
+        Self { name, pq, vectors }
     }
 }
 pub struct Hnsw1024 {
     hnsw: Hnsw,
     vectors: Vectors,
+    name: String,
 }
-impl Hnsw1024 {
-    pub fn new(hnsw: Hnsw, vectors: Vectors) -> Self {
-        Self { hnsw, vectors }
-    }
-}
-
 #[enum_dispatch(Index)]
 pub enum IndexConfiguration {
     Hnsw1024(Hnsw1024),
@@ -58,7 +52,7 @@ pub enum IndexConfiguration {
 
 impl Index for Pq1024x8 {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
-        let Pq1024x8 { pq, vectors: _ } = self;
+        let Pq1024x8 { pq, .. } = self;
         let quantized_comparator =
             NewMemoizedComparator128::new(pq.quantized_vectors(), pq.memoized_distances());
         match query_vec {
@@ -81,7 +75,7 @@ impl Index for Pq1024x8 {
     }
 
     fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
-        let Pq1024x8 { pq, vectors: _ } = self;
+        let Pq1024x8 { pq, .. } = self;
         let quantized_comparator =
             NewMemoizedComparator128::new(pq.quantized_vectors(), pq.memoized_distances());
         self.pq
@@ -90,23 +84,42 @@ impl Index for Pq1024x8 {
 }
 
 impl Hnsw1024 {
-    pub fn generate(vectors: Vectors, bp: &BuildParams) -> Self {
+    pub fn new(name: String, hnsw: Hnsw, vectors: Vectors) -> Self {
+        Self {
+            name,
+            hnsw,
+            vectors,
+        }
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn hnsw(&self) -> &Hnsw {
+        &self.hnsw
+    }
+
+    pub fn generate(name: String, vectors: Vectors, bp: &BuildParams) -> Self {
         let comparator = CosineDistance1024::new(&vectors);
         let hnsw = Hnsw::generate(bp, &comparator);
 
-        Hnsw1024 { hnsw, vectors }
+        Hnsw1024 {
+            name,
+            hnsw,
+            vectors,
+        }
     }
 }
 
 impl Index for Hnsw1024 {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
-        let Hnsw1024 { hnsw, vectors } = self;
+        let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.search_from_initial(query_vec, sp, &comparator)
     }
 
     fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
-        let Hnsw1024 { hnsw, vectors } = self;
+        let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.test_recall(proportion, sp, &comparator, seed)
     }
@@ -161,7 +174,11 @@ mod tests {
             0x533D,
         );
 
-        let index = Pq1024x8 { pq, vectors: vecs };
+        let index = Pq1024x8 {
+            pq,
+            vectors: vecs,
+            name: "dummy".to_string(),
+        };
         let mut sp = SearchParams::default();
         sp.parallel_visit_count = 12;
         sp.circulant_parameter_count = 8;

@@ -168,7 +168,7 @@ impl Quantizer {
                     eprintln!("quantizing {ix}");
                 }
                 let out_cast: &mut [u8] = unsafe { std::mem::transmute(out) };
-                self.quantize(&v, comparator, out_cast);
+                self.quantize(v, comparator, out_cast);
             });
 
         unsafe {
@@ -182,6 +182,7 @@ impl Quantizer {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_pq<
     'a,
     CentroidComparatorConstructor: VectorComparatorConstructor,

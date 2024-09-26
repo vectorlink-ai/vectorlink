@@ -20,6 +20,7 @@ pub enum DispatchError {
 pub trait Index {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue;
     fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
+    fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32;
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
     }
@@ -44,6 +45,7 @@ pub struct Hnsw1024 {
     vectors: Vectors,
     name: String,
 }
+
 #[enum_dispatch(Index)]
 pub enum IndexConfiguration {
     Hnsw1024(Hnsw1024),
@@ -80,6 +82,13 @@ impl Index for Pq1024x8 {
             NewMemoizedComparator128::new(pq.quantized_vectors(), pq.memoized_distances());
         self.pq
             .test_recall(proportion, sp, &quantized_comparator, seed)
+    }
+
+    fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32 {
+        let quantized_comparator =
+            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+        let quantized_hnsw = &mut self.pq.quantized_hnsw;
+        quantized_hnsw.optimize(sp, &quantized_comparator, seed)
     }
 }
 
@@ -122,6 +131,12 @@ impl Index for Hnsw1024 {
         let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.test_recall(proportion, sp, &comparator, seed)
+    }
+
+    fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32 {
+        let Hnsw1024 { hnsw, vectors, .. } = self;
+        let comparator = CosineDistance1024::new(vectors);
+        hnsw.optimize(sp, &comparator, seed)
     }
 }
 

@@ -15,9 +15,9 @@ use crate::{
 
 pub struct Pq {
     centroids: Vectors,
-    quantized_vectors: Vectors,
-    memoized_distances: MemoizedCentroidDistances,
-    quantized_hnsw: Hnsw,
+    pub quantized_vectors: Vectors,
+    pub memoized_distances: MemoizedCentroidDistances,
+    pub quantized_hnsw: Hnsw,
     quantizer: Quantizer,
 }
 

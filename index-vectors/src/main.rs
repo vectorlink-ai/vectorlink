@@ -2,8 +2,8 @@ use std::io;
 
 use clap::Parser;
 use hnsw_redux::{
-    index::{Hnsw1024, IndexConfiguration},
-    params::BuildParams,
+    index::{Hnsw1024, Index, IndexConfiguration},
+    params::{BuildParams, SearchParams},
     vectors::Vectors,
 };
 
@@ -23,9 +23,11 @@ fn main() -> io::Result<()> {
     eprintln!("About to index vectors: {}", &args.name);
     let vectors = Vectors::load(&args.vector_directory, &args.name)?;
 
-    let hnsw: IndexConfiguration =
+    let mut hnsw: IndexConfiguration =
         Hnsw1024::generate(args.name, vectors, &BuildParams::default()).into();
+    let sp = SearchParams::default();
 
+    hnsw.optimize(&sp, 0x533D);
     hnsw.store_hnsw(&args.hnsw_root_directory)?;
 
     Ok(())

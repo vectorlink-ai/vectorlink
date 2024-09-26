@@ -82,7 +82,10 @@ impl MemoizedCentroidDistances {
         let size = calculator.num_centroids();
         eprintln!("constructing memoized");
         let memoized_array_length = triangle_lookup_length(size);
-        eprintln!("for size {} we figured {memoized_array_length}", size);
+        eprintln!(
+            "for size {} we calculate an array length of {memoized_array_length}",
+            size
+        );
         let mut distances: Vec<f16> = Vec::with_capacity(memoized_array_length);
         {
             let partial_distances_uninit = distances.spare_capacity_mut();

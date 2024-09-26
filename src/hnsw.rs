@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::{
     layer::{Layer, VectorComparator, VectorGrouper, VectorSearcher},
     params::{BuildParams, SearchParams},
@@ -118,6 +120,24 @@ impl Hnsw {
         Hnsw::new(layers)
     }
 
+    pub fn optimize<C: VectorComparator>(
+        &mut self,
+        sp: &SearchParams,
+        comparator: &C,
+        seed: u64,
+    ) -> f32 {
+        let mut recall = 0.0;
+        let mut improvement = 1.0;
+        let proportion = 1.0 / (self.num_vectors() as f32).sqrt();
+        while recall < 1.0 && improvement > 0.001 {
+            self.improve_neighbors_in_all_layers(sp, comparator);
+            let new_recall = self.test_recall(proportion, sp, comparator, seed);
+            improvement = new_recall - recall;
+            recall = new_recall
+        }
+        recall
+    }
+
     pub fn improve_neighbors_in_all_layers<C: VectorComparator>(
         &mut self,
         optimize_sp: &SearchParams,
@@ -152,8 +172,14 @@ impl Hnsw {
         seed: u64,
     ) -> f32 {
         let mut rng = StdRng::seed_from_u64(seed);
-        let total: f32 = (0..self.num_vectors() as u32)
-            .choose_multiple(&mut rng, (proportion * self.num_vectors() as f32) as usize)
+        let ids: Vec<u32> = if proportion == 1.0 {
+            (0..self.num_vectors() as u32).collect()
+        } else {
+            (0..self.num_vectors() as u32)
+                .choose_multiple(&mut rng, (proportion * self.num_vectors() as f32) as usize)
+        };
+        let total = ids.len();
+        let found: f32 = ids
             .into_par_iter()
             .map(|i| {
                 let result = self.search_from_initial(Vector::Id(i), sp, comparator);
@@ -165,7 +191,7 @@ impl Hnsw {
                 }
             })
             .sum();
-        total / self.num_vectors() as f32
+        found / total as f32
     }
 
     pub fn get_layer_mut(&mut self, layer_id: usize) -> &mut Layer {

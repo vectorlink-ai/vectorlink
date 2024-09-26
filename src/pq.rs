@@ -204,8 +204,14 @@ pub fn create_pq<
     let centroid_comparator = CentroidComparatorConstructor::new_from_vecs(&centroids);
     let centroid_distance_calculator = CDC::new(&centroids);
 
-    let centroid_hnsw = Hnsw::generate(centroid_build_params, &centroid_comparator);
+    let mut centroid_hnsw = Hnsw::generate(centroid_build_params, &centroid_comparator);
     eprintln!("generated centroid hnsw");
+    let recall = centroid_hnsw.optimize(
+        &centroid_build_params.optimize_sp,
+        &centroid_comparator,
+        seed,
+    );
+    eprintln!("optimized centroid hnsw {recall}");
     let quantizer = Quantizer::new(centroid_hnsw, quantizer_search_params);
     let quantized_vectors =
         quantizer.quantize_all(vectors.num_vecs(), vector_stream, &centroid_comparator);
@@ -214,8 +220,14 @@ pub fn create_pq<
     let memoized_distances = MemoizedCentroidDistances::new(&centroid_distance_calculator);
     let quantized_comparator =
         QuantizedComparatorConstructor::new(&quantized_vectors, &memoized_distances);
-    let quantized_hnsw = Hnsw::generate(quantized_build_params, &quantized_comparator);
+    let mut quantized_hnsw = Hnsw::generate(quantized_build_params, &quantized_comparator);
     eprintln!("generated quantized hnsw");
+    let recall = quantized_hnsw.optimize(
+        &quantized_build_params.optimize_sp,
+        &quantized_comparator,
+        seed,
+    );
+    eprintln!("optimized quantized hnsw {recall}");
 
     std::mem::drop(centroid_comparator);
     std::mem::drop(centroid_distance_calculator);

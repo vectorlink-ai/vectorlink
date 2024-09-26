@@ -9,7 +9,7 @@ pub struct BuildParams {
 impl Default for BuildParams {
     fn default() -> Self {
         Self {
-            order: 12,
+            order: 24,
             neighborhood_size: 24,
             bottom_neighborhood_size: 48,
             optimize_sp: SearchParams {
@@ -33,7 +33,7 @@ pub struct SearchParams {
 impl Default for SearchParams {
     fn default() -> Self {
         Self {
-            parallel_visit_count: 4,
+            parallel_visit_count: 12,
             visit_queue_len: 100,
             search_queue_len: 30,
             circulant_parameter_count: 8,

@@ -84,17 +84,20 @@ impl Hnsw {
 
     pub fn generate<C: VectorComparator>(bp: &BuildParams, comparator: &C) -> Self {
         let num_vecs = comparator.num_vecs();
+        eprintln!("num_vecs: {num_vecs}");
         assert!(num_vecs > bp.order);
         let mut layer_nodes = bp.order;
         let zero_layer = Layer::build_perfect(layer_nodes, bp.neighborhood_size, comparator);
         eprintln!("perfect first layer built");
         let mut layers = vec![zero_layer];
-        while layer_nodes <= num_vecs {
+        while num_vecs > layer_nodes {
             layer_nodes *= bp.order;
             eprintln!("layer nodes: {layer_nodes}");
             let last_layer = layer_nodes >= num_vecs;
+            eprintln!("last layer: {last_layer}");
             let vec_count = if last_layer { num_vecs } else { layer_nodes };
             let single_neighborhood_size = if last_layer {
+                eprintln!("generating final layer");
                 bp.bottom_neighborhood_size
             } else {
                 bp.neighborhood_size
@@ -115,8 +118,6 @@ impl Hnsw {
             };
             new_layer.improve_neighbors(comparator, &grouper);
             *layers.last_mut().unwrap() = new_layer;
-
-            layer_nodes *= bp.order;
         }
         Hnsw::new(layers)
     }
@@ -310,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    //#[ignore]
     fn construct_unquantized_1536_hnsw() {
         let number_of_vecs = 100_000;
         let vecs = random_vectors_normalized::<1536>(number_of_vecs, 0x533D);

@@ -55,14 +55,15 @@ impl Vectors {
             .open(Self::vec_path(directory, identity))?;
         let raw_fd = vector_file.as_raw_fd();
         unsafe {
-            assert!(
-                libc::posix_fadvise(
-                    raw_fd,
-                    0,
-                    0,
-                    libc::POSIX_FADV_SEQUENTIAL | libc::POSIX_FADV_DONTNEED
-                ) == 0,
-                "fadvice failed"
+            assert_eq!(
+                libc::posix_fadvise(raw_fd, 0, 0, libc::POSIX_FADV_SEQUENTIAL),
+                0,
+                "fadvice (sequential) failed"
+            );
+            assert_eq!(
+                libc::posix_fadvise(raw_fd, 0, 0, libc::POSIX_FADV_DONTNEED),
+                0,
+                "fadvice (dontneed) failed"
             );
         }
         let mut data = Vec::with_capacity(vector_file.metadata()?.size() as usize);

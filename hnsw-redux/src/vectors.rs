@@ -6,6 +6,8 @@ use std::{
     path::Path,
 };
 
+use crate::vecmath::{normalize_aligned_1024, normalize_aligned_1536};
+
 #[derive(Debug, Clone, Copy)]
 pub enum Vector<'a> {
     Slice(&'a [u8]),
@@ -20,6 +22,7 @@ pub struct Vectors {
 
 impl Vectors {
     pub fn new(data: Vec<u8>, vector_byte_size: usize) -> Self {
+        assert_eq!(data.as_ptr() as usize % 16, 0, "vector data is unaligned");
         assert_eq!(0, data.len() % vector_byte_size);
         Self {
             data,
@@ -55,10 +58,7 @@ impl Vectors {
             data.set_len(len);
         }
 
-        Ok(Self {
-            data,
-            vector_byte_size,
-        })
+        Ok(Self::new(data, vector_byte_size))
     }
 
     pub fn num_vecs(&self) -> usize {
@@ -101,6 +101,23 @@ impl Vectors {
 
     pub fn iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
         (0..self.num_vecs()).map(|i| &self[i])
+    }
+
+    pub fn normalize(&mut self) {
+        // TODO it's not just about vector byte size. we really should
+        // keep around some metadata about what sort of vectors we
+        // have.
+        let data = unsafe {
+            std::slice::from_raw_parts_mut(
+                self.data.as_mut_ptr() as *mut f32,
+                self.data.len() / std::mem::size_of::<f32>(),
+            )
+        };
+        match self.vector_byte_size {
+            1024 => normalize_aligned_1024(data),
+            1536 => normalize_aligned_1536(data),
+            n => panic!("don't know how to normalize vectors of size {n}"),
+        }
     }
 }
 

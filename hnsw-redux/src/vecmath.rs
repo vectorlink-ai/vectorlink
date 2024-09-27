@@ -153,6 +153,32 @@ where
     vec_simd.reduce_sum()
 }
 
+macro_rules! normalize_aligned_n_64 {
+    ($name:ident, $n:literal) => {
+        #[unroll_for_loops]
+        #[inline(always)]
+        pub fn $name(vec: &mut [f32]) {
+            let (prefix, simd, suffix) = vec.as_simd_mut::<64>();
+            debug_assert_eq!(prefix.len(), 0);
+            debug_assert_eq!(suffix.len(), 0);
+            debug_assert_eq!(simd.len(), 64 * $n);
+
+            let mut accumulator = f32x64::splat(0.0);
+            for i in 0..$n {
+                accumulator = simd[i].mul_add(simd[i], accumulator);
+            }
+            let size = accumulator.reduce_sum();
+            let size_simd = f32x64::splat(size);
+            for i in 0..$n {
+                simd[i] /= size_simd;
+            }
+        }
+    };
+}
+
+normalize_aligned_n_64!(normalize_aligned_1024, 16);
+normalize_aligned_n_64!(normalize_aligned_1536, 24);
+
 #[cfg(test)]
 mod tests {
     use super::*;

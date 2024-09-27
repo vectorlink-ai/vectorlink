@@ -430,6 +430,7 @@ impl Layer {
     }
 
     pub fn symmetrize<C: VectorComparator>(&mut self, comparator: &C) {
+        eprintln!("symmetrize: finding memoized distances");
         let mut memoized_distances: Vec<_> = self
             .neighborhoods
             .par_chunks(self.single_neighborhood_size)
@@ -446,6 +447,7 @@ impl Layer {
             })
             .collect();
 
+        eprintln!("symmetrize: finding neighbor candidates");
         // create read-write locked ring queues
         let neighbor_candidates: Vec<_> = self
             .neighborhoods
@@ -459,6 +461,7 @@ impl Layer {
             })
             .collect();
 
+        eprintln!("symmetrize: symmetrize neighborhoods");
         // symmetrize neighborhoods
         (0..neighbor_candidates.len())
             .into_par_iter()
@@ -484,6 +487,7 @@ impl Layer {
         comparator: &C,
         searcher: &S,
     ) {
+        eprintln!("improve neighbors: calculating memoized distances");
         // calculate distances for all neighborhoods
         let mut memoized_distances: Vec<_> = self
             .neighborhoods
@@ -501,8 +505,9 @@ impl Layer {
             })
             .collect();
 
+        eprintln!("improve neighbors: finding neighbor candidates");
         // create read-write locked ring queues
-        let neighbor_candidates: Vec<_> = self
+        let neighbor_candidates: Vec<RwLock<OrderedRingQueue<'_>>> = self
             .neighborhoods
             .par_chunks_mut(self.single_neighborhood_size)
             .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
@@ -514,6 +519,7 @@ impl Layer {
             })
             .collect();
 
+        eprintln!("improve neighbors: optimizing neighborhoods");
         // optimize neighborhoods
         (0..neighbor_candidates.len() as u32)
             .into_par_iter()

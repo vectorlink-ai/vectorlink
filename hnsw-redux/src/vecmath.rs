@@ -158,7 +158,6 @@ macro_rules! normalize_aligned_n_64 {
         #[unroll_for_loops]
         #[inline(always)]
         pub fn $name(vec: &mut [f32]) {
-            eprintln!("{:?}", vec.as_ptr());
             let (prefix, simd, suffix) = vec.as_simd_mut::<64>();
             debug_assert_eq!(prefix.len(), 0, "unexpected prefix");
             debug_assert_eq!(suffix.len(), 0, "unexpected suffix");

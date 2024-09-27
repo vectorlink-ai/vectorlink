@@ -20,6 +20,10 @@ impl Hnsw {
         &self.layers
     }
 
+    pub fn into_inner(self) -> Vec<Layer> {
+        self.layers
+    }
+
     pub fn search<C: VectorComparator>(
         &self,
         query_vec: Vector,
@@ -117,9 +121,24 @@ impl Hnsw {
                 layers: &layers,
                 sp: &bp.optimize_sp,
             };
-            eprintln!("improving layer {}", layers.len());
+            eprintln!("improving layer {}", layers.len() + 1);
             new_layer.improve_neighbors(comparator, &grouper);
             *layers.last_mut().unwrap() = new_layer;
+            let temporary_hnsw = Hnsw::new(layers);
+
+            let proportion = 1.0 / (temporary_hnsw.num_vectors() as f32).sqrt();
+            let recall = temporary_hnsw.test_recall(
+                proportion,
+                &SearchParams::default(),
+                comparator,
+                0x533D,
+            );
+            eprintln!(
+                "recall at layer {}: {recall}",
+                temporary_hnsw.layer_count() + 1
+            );
+
+            layers = temporary_hnsw.into_inner();
         }
         Hnsw::new(layers)
     }

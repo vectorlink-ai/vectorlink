@@ -30,5 +30,8 @@ fn main() -> io::Result<()> {
     hnsw.optimize(&sp, 0x533D);
     hnsw.store_hnsw(&args.hnsw_root_directory)?;
 
+    let recall = hnsw.test_recall(sp, 0x533D);
+    eprintln!("recall: {recall}");
+
     Ok(())
 }

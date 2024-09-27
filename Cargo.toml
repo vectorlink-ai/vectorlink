@@ -3,3 +3,6 @@ resolver = "2"
 members = [
   "hnsw-redux"
 , "index-vectors"]
+
+[profile.release]
+debug = true

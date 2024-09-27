@@ -1,5 +1,7 @@
 use enum_dispatch::enum_dispatch;
 use rayon::iter::ParallelIterator;
+use std::os::unix::prelude::FileExt;
+use std::{fs::File, path::Path};
 
 use crate::{
     comparator::{
@@ -23,7 +25,7 @@ pub trait Index {
     fn num_vectors(&self) -> usize;
     fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
     fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32;
-    fn knn<CW: ClusterWriter>(&self, k: usize, sp: &SearchParams);
+    fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P);
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
     }
@@ -102,13 +104,20 @@ impl Index for Pq1024x8 {
         quantized_hnsw.optimize(sp, &quantized_comparator, seed)
     }
 
-    fn knn<CW: ClusterWriter>(&self, k: usize, sp: &SearchParams, cw: CW) {
+    fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
         let quantized_comparator =
             NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+        let file = File::create(path).unwrap();
+        let record_size = k * (size_of::<(u32, f32)>());
         self.pq
             .quantized_hnsw
             .knn(k, sp, &quantized_comparator)
-            .for_each(|result| cw.consume(result));
+            .for_each(|(i, pairs)| {
+                let raw_data =
+                    unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+                file.write_all_at(raw_data, (i as usize * record_size) as u64)
+                    .unwrap()
+            });
     }
 }
 
@@ -163,11 +172,17 @@ impl Index for Hnsw1024 {
         hnsw.optimize(sp, &comparator, seed)
     }
 
-    fn knn<CW: ClusterWriter>(&self, k: usize, sp: &SearchParams, cw: CW) {
+    fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
         let comparator = CosineDistance1024::new(&self.vectors);
-        self.hnsw
-            .knn(k, sp, &comparator)
-            .for_each(|result| cw.consume(result));
+        let file = File::create(path).unwrap();
+        let record_size = k * (size_of::<(u32, f32)>());
+
+        self.hnsw.knn(k, sp, &comparator).for_each(|(i, pairs)| {
+            let raw_data =
+                unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+            file.write_all_at(raw_data, (i as usize * record_size) as u64)
+                .unwrap()
+        });
     }
 }
 

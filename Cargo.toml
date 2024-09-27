@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
   "hnsw-redux"
-, "index-vectors"]
+, "index-vectors", "test-recall"]
 
 [profile.release]
 debug = true

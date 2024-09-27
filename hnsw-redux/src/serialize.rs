@@ -183,7 +183,8 @@ impl Hnsw1024 {
         assert_eq!(metadata.hnsw_type, HnswType::Hnsw1024);
 
         let hnsw = Hnsw::load(hnsw_path)?;
-        let vectors = Vectors::load(vector_directory, name)?;
+        let vector_name = &metadata.name;
+        let vectors = Vectors::load(vector_directory, vector_name)?;
 
         Ok(Self::new(name.to_string(), hnsw, vectors))
     }

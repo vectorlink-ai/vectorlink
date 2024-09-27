@@ -19,10 +19,16 @@ pub enum DispatchError {
 #[enum_dispatch]
 pub trait Index {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue;
-    fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
+    fn num_vectors(&self) -> usize;
+    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
     fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32;
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
+    }
+
+    fn test_recall(&self, sp: &SearchParams, seed: u64) -> f32 {
+        let proportion = 1.0 / (self.num_vectors() as f32).sqrt();
+        self.test_recall_with_proportion(proportion, sp, seed)
     }
 }
 
@@ -53,6 +59,9 @@ pub enum IndexConfiguration {
 }
 
 impl Index for Pq1024x8 {
+    fn num_vectors(&self) -> usize {
+        self.vectors.num_vecs()
+    }
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
         let Pq1024x8 { pq, .. } = self;
         let quantized_comparator =
@@ -76,7 +85,7 @@ impl Index for Pq1024x8 {
         }
     }
 
-    fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
+    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
         let Pq1024x8 { pq, .. } = self;
         let quantized_comparator =
             NewMemoizedComparator128::new(pq.quantized_vectors(), pq.memoized_distances());
@@ -121,13 +130,17 @@ impl Hnsw1024 {
 }
 
 impl Index for Hnsw1024 {
+    fn num_vectors(&self) -> usize {
+        self.vectors.num_vecs()
+    }
+
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
         let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.search_from_initial(query_vec, sp, &comparator)
     }
 
-    fn test_recall(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
+    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
         let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.test_recall(proportion, sp, &comparator, seed)
@@ -198,7 +211,7 @@ mod tests {
         sp.parallel_visit_count = 12;
         sp.circulant_parameter_count = 8;
 
-        let recall = index.test_recall(0.10, &sp, 0x533D);
+        let recall = index.test_recall_with_proportion(0.10, &sp, 0x533D);
         eprintln!("recall: {recall}");
         assert!(recall > 0.95);
     }

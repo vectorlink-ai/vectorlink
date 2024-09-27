@@ -6,6 +6,8 @@ use std::{
     path::Path,
 };
 
+use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
+
 use crate::vecmath::{normalize_aligned_1024, normalize_aligned_1536};
 
 #[derive(Debug, Clone, Copy)]
@@ -104,20 +106,25 @@ impl Vectors {
     }
 
     pub fn normalize(&mut self) {
-        // TODO it's not just about vector byte size. we really should
-        // keep around some metadata about what sort of vectors we
-        // have.
-        let data = unsafe {
-            std::slice::from_raw_parts_mut(
-                self.data.as_mut_ptr() as *mut f32,
-                self.data.len() / std::mem::size_of::<f32>(),
-            )
-        };
-        match self.vector_byte_size {
-            1024 => normalize_aligned_1024(data),
-            1536 => normalize_aligned_1536(data),
-            n => panic!("don't know how to normalize vectors of size {n}"),
-        }
+        self.data
+            .par_chunks_mut(self.vector_byte_size)
+            .for_each(|vector| {
+                let vector = unsafe {
+                    std::slice::from_raw_parts_mut(
+                        vector.as_mut_ptr() as *mut f32,
+                        self.vector_byte_size / std::mem::size_of::<f32>(),
+                    )
+                };
+                // TODO it's not just about vector byte size. we really should
+                // keep around some metadata about what sort of vectors we
+                // have.
+                // TODO this could be faster if there wasn't this dispatch
+                match self.vector_byte_size {
+                    1024 => normalize_aligned_1024(vector),
+                    1536 => normalize_aligned_1536(vector),
+                    n => panic!("don't know how to normalize vectors of size {n}"),
+                }
+            });
     }
 }
 

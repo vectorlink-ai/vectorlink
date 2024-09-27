@@ -121,7 +121,7 @@ impl Hnsw {
                 layers: &layers,
                 sp: &bp.optimize_sp,
             };
-            eprintln!("improving layer {}", layers.len() + 1);
+            eprintln!("improving layer {}", layers.len());
             new_layer.improve_neighbors(comparator, &grouper);
             *layers.last_mut().unwrap() = new_layer;
             let temporary_hnsw = Hnsw::new(layers);

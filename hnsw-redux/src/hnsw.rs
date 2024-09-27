@@ -228,6 +228,17 @@ impl Hnsw {
     pub fn layer_count(&self) -> usize {
         self.layers.len()
     }
+
+    pub fn knn<'a, C: VectorComparator>(
+        &'a self,
+        k: usize,
+        sp: &'a SearchParams,
+        comparator: &'a C,
+    ) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + 'a {
+        assert!(!self.layers.is_empty());
+        let bottom_layer = self.layers.last().unwrap();
+        bottom_layer.knn(k, sp, comparator)
+    }
 }
 
 pub struct SearchGrouper<'a, C, L: AsRef<Layer>> {

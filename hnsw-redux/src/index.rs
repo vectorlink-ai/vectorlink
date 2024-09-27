@@ -1,4 +1,5 @@
 use enum_dispatch::enum_dispatch;
+use rayon::iter::ParallelIterator;
 
 use crate::{
     comparator::{
@@ -22,6 +23,7 @@ pub trait Index {
     fn num_vectors(&self) -> usize;
     fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
     fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32;
+    fn knn<CW: ClusterWriter>(&self, k: usize, sp: &SearchParams);
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
     }
@@ -99,6 +101,15 @@ impl Index for Pq1024x8 {
         let quantized_hnsw = &mut self.pq.quantized_hnsw;
         quantized_hnsw.optimize(sp, &quantized_comparator, seed)
     }
+
+    fn knn<CW: ClusterWriter>(&self, k: usize, sp: &SearchParams, cw: CW) {
+        let quantized_comparator =
+            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+        self.pq
+            .quantized_hnsw
+            .knn(k, sp, &quantized_comparator)
+            .for_each(|result| cw.consume(result));
+    }
 }
 
 impl Hnsw1024 {
@@ -150,6 +161,13 @@ impl Index for Hnsw1024 {
         let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.optimize(sp, &comparator, seed)
+    }
+
+    fn knn<CW: ClusterWriter>(&self, k: usize, sp: &SearchParams, cw: CW) {
+        let comparator = CosineDistance1024::new(&self.vectors);
+        self.hnsw
+            .knn(k, sp, &comparator)
+            .for_each(|result| cw.consume(result));
     }
 }
 

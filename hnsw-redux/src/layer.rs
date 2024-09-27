@@ -539,6 +539,34 @@ impl Layer {
                 }
             });
     }
+
+    pub fn knn<'a, C: VectorComparator>(
+        &'a self,
+        k: usize,
+        sp: &'a SearchParams,
+        comparator: &'a C,
+    ) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + 'a {
+        let neighborhood_size = self.single_neighborhood_size();
+        let node_count = self.number_of_neighborhoods();
+        let buffer_size =
+            neighborhood_size * (sp.parallel_visit_count + sp.circulant_parameter_count);
+        (0..node_count as u32).into_par_iter().map(move |node_id| {
+            let mut search_queue = OrderedRingQueue::new(k);
+            let mut uninitialized_visit_queue = OrderedRingQueue::new(sp.search_queue_len);
+            let mut ids = Vec::with_capacity(buffer_size);
+            let mut priorities = Vec::with_capacity(buffer_size);
+            self.closest_vectors(
+                Vector::Id(node_id),
+                &mut search_queue,
+                &mut uninitialized_visit_queue,
+                &mut ids,
+                &mut priorities,
+                sp,
+                comparator,
+            );
+            (node_id, search_queue.get_all())
+        })
+    }
 }
 
 #[cfg(test)]

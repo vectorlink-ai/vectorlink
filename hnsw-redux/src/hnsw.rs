@@ -175,6 +175,7 @@ impl Hnsw {
         comparator: &C,
         seed: u64,
     ) -> f32 {
+        eprintln!("proportion: {proportion}");
         let mut rng = StdRng::seed_from_u64(seed);
         let ids: Vec<u32> = if proportion == 1.0 {
             (0..self.num_vectors() as u32).collect()
@@ -183,6 +184,7 @@ impl Hnsw {
                 .choose_multiple(&mut rng, (proportion * self.num_vectors() as f32) as usize)
         };
         let total = ids.len();
+        eprintln!("searching for {total} vecs..");
         let found: f32 = ids
             .into_par_iter()
             .map(|i| {
@@ -195,6 +197,7 @@ impl Hnsw {
                 }
             })
             .sum();
+        eprintln!("found {found}.");
         found / total as f32
     }
 

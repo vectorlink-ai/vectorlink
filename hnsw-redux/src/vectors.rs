@@ -120,8 +120,8 @@ impl Vectors {
                 // have.
                 // TODO this could be faster if there wasn't this dispatch
                 match self.vector_byte_size {
-                    1024 => normalize_aligned_1024(vector),
-                    1536 => normalize_aligned_1536(vector),
+                    4096 => normalize_aligned_1024(vector),
+                    6114 => normalize_aligned_1536(vector),
                     n => panic!("don't know how to normalize vectors of size {n}"),
                 }
             });

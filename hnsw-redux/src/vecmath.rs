@@ -167,7 +167,7 @@ macro_rules! normalize_aligned_n_64 {
             for i in 0..$n {
                 accumulator = simd[i].mul_add(simd[i], accumulator);
             }
-            let size = accumulator.reduce_sum();
+            let size = accumulator.reduce_sum().sqrt();
             let size_simd = f32x64::splat(size);
             for i in 0..$n {
                 simd[i] /= size_simd;

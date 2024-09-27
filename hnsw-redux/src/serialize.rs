@@ -11,6 +11,7 @@ use crate::{
     hnsw::Hnsw,
     index::{Hnsw1024, IndexConfiguration},
     layer::Layer,
+    util::aligned_256_vec,
     vectors::Vectors,
 };
 
@@ -66,7 +67,7 @@ impl Vectors {
                 "fadvice (dontneed) failed"
             );
         }
-        let mut data = Vec::with_capacity(vector_file.metadata()?.size() as usize);
+        let mut data = aligned_256_vec::<u8>(vector_file.metadata()?.size() as usize);
         vector_file.read_to_end(&mut data)?;
         eprintln!("vector data loaded...");
         Ok(Self::new(data, meta.vector_byte_size))

@@ -12,6 +12,7 @@ pub mod pq;
 pub mod ring_queue;
 pub mod serialize;
 pub mod test_util;
+mod util;
 pub mod vecmath;
 pub mod vectors;
 

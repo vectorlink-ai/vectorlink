@@ -24,7 +24,11 @@ pub struct Vectors {
 
 impl Vectors {
     pub fn new(data: Vec<u8>, vector_byte_size: usize) -> Self {
-        assert_eq!(data.as_ptr() as usize % 256, 0, "vector data is unaligned");
+        assert_eq!(
+            data.as_ptr() as usize % vector_byte_size,
+            0,
+            "vector data is unaligned"
+        );
         assert_eq!(0, data.len() % vector_byte_size);
         Self {
             data,

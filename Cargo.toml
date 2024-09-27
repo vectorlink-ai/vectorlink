@@ -6,3 +6,8 @@ members = [
 
 [profile.release]
 debug = true
+
+[profile.assert]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true

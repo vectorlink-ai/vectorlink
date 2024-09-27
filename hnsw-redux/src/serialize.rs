@@ -1,6 +1,7 @@
 use std::{
-    fs::{self, File},
-    io::{self, Write},
+    fs::{self, File, OpenOptions},
+    io::{self, Read, Write},
+    os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
@@ -44,8 +45,17 @@ impl Vectors {
         eprintln!("loading from {:?} as {identity}", directory.as_ref());
         let directory = directory.as_ref();
         let metadata_path = Self::meta_path(directory, identity);
+
         let meta: VectorsMetadata = serde_json::from_reader(File::open(metadata_path)?)?;
-        let data = fs::read(Self::vec_path(directory, identity))?;
+
+        // we don't want this read to be buffered, because vector
+        // files are huge, and buffering is expensive.
+        let mut vector_file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(Self::vec_path(directory, identity))?;
+        let mut data = Vec::with_capacity(vector_file.metadata()?.size() as usize);
+        vector_file.read_to_end(&mut data)?;
         eprintln!("vector data loaded...");
         Ok(Self::new(data, meta.vector_byte_size))
     }

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 enum_dispatch = "0.3.13"
 itertools = "0.13.0"
+libc = "0.2.159"
 rand = "0.8.5"
 rayon = "1.10.0"
 serde = { version = "1.0.210", features = ["derive"] }

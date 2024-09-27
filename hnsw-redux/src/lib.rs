@@ -2,7 +2,6 @@
 #![feature(f16)]
 #![allow(clippy::field_reassign_with_default)]
 pub mod bitmap;
-pub mod clusters;
 pub mod comparator;
 pub mod hnsw;
 pub mod index;

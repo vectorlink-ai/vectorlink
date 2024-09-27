@@ -25,6 +25,7 @@ pub trait Index {
     fn num_vectors(&self) -> usize;
     fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
     fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32;
+    fn improve_neighbors_in_all_layers(&mut self, sp: &SearchParams);
     fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P);
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
@@ -104,6 +105,14 @@ impl Index for Pq1024x8 {
         quantized_hnsw.optimize(sp, &quantized_comparator, seed)
     }
 
+    fn improve_neighbors_in_all_layers(&mut self, sp: &SearchParams) {
+        let quantized_comparator =
+            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+        self.pq
+            .quantized_hnsw
+            .improve_neighbors_in_all_layers(sp, &quantized_comparator)
+    }
+
     fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
         let quantized_comparator =
             NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
@@ -170,6 +179,12 @@ impl Index for Hnsw1024 {
         let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.optimize(sp, &comparator, seed)
+    }
+
+    fn improve_neighbors_in_all_layers(&mut self, sp: &SearchParams) {
+        let Hnsw1024 { hnsw, vectors, .. } = self;
+        let comparator = CosineDistance1024::new(vectors);
+        hnsw.improve_neighbors_in_all_layers(sp, &comparator)
     }
 
     fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {

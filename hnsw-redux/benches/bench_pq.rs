@@ -15,7 +15,7 @@ use test::Bencher;
 
 #[bench]
 fn bench_pq_construction(b: &mut Bencher) {
-    let number_of_vecs = 100_000;
+    let number_of_vecs = 10_000;
     let vecs = random_vectors(number_of_vecs, 1024, 0x533D);
     let vector_indexable = VectorRangeIndexableForVectors(&vecs);
     let centroid_count = u16::MAX as usize;

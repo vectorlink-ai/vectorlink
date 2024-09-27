@@ -108,6 +108,7 @@ impl Hnsw {
                 sp: &bp.optimize_sp,
             };
             let mut new_layer = Layer::build_grouped(vec_count, single_neighborhood_size, &grouper);
+            eprintln!("symmetrizing layer {}", layers.len());
             new_layer.symmetrize(comparator);
             layers.push(new_layer.clone());
             let grouper = SearchGrouper {
@@ -115,6 +116,7 @@ impl Hnsw {
                 layers: &layers,
                 sp: &bp.optimize_sp,
             };
+            eprintln!("improving layer {}", layers.len());
             new_layer.improve_neighbors(comparator, &grouper);
             *layers.last_mut().unwrap() = new_layer;
         }

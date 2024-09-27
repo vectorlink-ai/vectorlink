@@ -158,10 +158,11 @@ macro_rules! normalize_aligned_n_64 {
         #[unroll_for_loops]
         #[inline(always)]
         pub fn $name(vec: &mut [f32]) {
+            eprintln!("{:?}", vec.as_ptr());
             let (prefix, simd, suffix) = vec.as_simd_mut::<64>();
-            debug_assert_eq!(prefix.len(), 0);
-            debug_assert_eq!(suffix.len(), 0);
-            debug_assert_eq!(simd.len(), 64 * $n);
+            debug_assert_eq!(prefix.len(), 0, "unexpected prefix");
+            debug_assert_eq!(suffix.len(), 0, "unexpected suffix");
+            debug_assert_eq!(simd.len(), $n);
 
             let mut accumulator = f32x64::splat(0.0);
             for i in 0..$n {
@@ -181,6 +182,8 @@ normalize_aligned_n_64!(normalize_aligned_1536, 24);
 
 #[cfg(test)]
 mod tests {
+    use crate::test_util::random_vectors;
+
     use super::*;
 
     #[test]
@@ -195,5 +198,19 @@ mod tests {
             .map(|i| ((i as f32 * 8.0).powi(2) * 8.0).sqrt())
             .collect();
         assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn normalize_1024_vec() {
+        let vec = &mut random_vectors(1, 1024, 0x533D)[0];
+        let cast: &mut [f32; 1024] = unsafe { &mut *(vec.as_mut_ptr() as *mut [f32; 1024]) };
+        let norm = cast.iter().map(|f| f * f).sum::<f32>().sqrt();
+        let normalized: Vec<f32> = cast.iter().map(|f| f / norm).collect();
+
+        normalize_aligned_1024(cast);
+
+        for (&left, right) in cast.iter().zip(normalized) {
+            assert!((left - right).abs() < 0.0000001);
+        }
     }
 }

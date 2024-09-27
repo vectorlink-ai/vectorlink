@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     io::{self, Read},
-    ops::Index,
+    ops::{Index, IndexMut},
     os::unix::fs::MetadataExt,
     path::Path,
 };
@@ -110,6 +110,10 @@ impl Vectors {
     }
 
     pub fn normalize(&mut self) {
+        assert!(
+            self.vector_byte_size >= 256 && self.vector_byte_size % 256 == 0,
+            "cannot normalize vectors that aren't 256bit aligned (for avx)"
+        );
         self.data
             .par_chunks_mut(self.vector_byte_size)
             .for_each(|vector| {
@@ -138,5 +142,12 @@ impl Index<usize> for Vectors {
     fn index(&self, index: usize) -> &Self::Output {
         let offset = self.vector_byte_size * index;
         &self.data[offset..offset + self.vector_byte_size]
+    }
+}
+
+impl IndexMut<usize> for Vectors {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let offset = self.vector_byte_size * index;
+        &mut self.data[offset..offset + self.vector_byte_size]
     }
 }

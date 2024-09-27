@@ -1,7 +1,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    os::{fd::AsRawFd, unix::fs::MetadataExt},
     path::{Path, PathBuf},
 };
 
@@ -52,8 +52,19 @@ impl Vectors {
         // files are huge, and buffering is expensive.
         let mut vector_file = OpenOptions::new()
             .read(true)
-            .custom_flags(libc::O_DIRECT)
             .open(Self::vec_path(directory, identity))?;
+        let raw_fd = vector_file.as_raw_fd();
+        unsafe {
+            assert!(
+                libc::posix_fadvise(
+                    raw_fd,
+                    0,
+                    0,
+                    libc::POSIX_FADV_SEQUENTIAL | libc::POSIX_FADV_DONTNEED
+                ) == 0,
+                "fadvice failed"
+            );
+        }
         let mut data = Vec::with_capacity(vector_file.metadata()?.size() as usize);
         vector_file.read_to_end(&mut data)?;
         eprintln!("vector data loaded...");

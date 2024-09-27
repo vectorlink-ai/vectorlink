@@ -126,17 +126,17 @@ impl Quantizer {
         out: &mut [u8],
     ) {
         debug_assert_eq!(0, unquantized.len() % C::vector_byte_size());
-        for (chunk, out) in unquantized
-            .chunks(C::vector_byte_size())
-            .zip(out.chunks_mut(std::mem::size_of::<u16>()))
-        {
-            let out_cast: &mut u16 = unsafe { &mut *(out.as_mut_ptr() as *mut u16) };
-            *out_cast = self
-                .hnsw
-                .search_from_initial(Vector::Slice(chunk), &self.sp, comparator)
-                .first()
-                .0 as u16;
-        }
+        unquantized
+            .par_chunks(C::vector_byte_size())
+            .zip(out.par_chunks_mut(std::mem::size_of::<u16>()))
+            .for_each(|(chunk, out)| {
+                let out_cast: &mut u16 = unsafe { &mut *(out.as_mut_ptr() as *mut u16) };
+                *out_cast = self
+                    .hnsw
+                    .search_from_initial(Vector::Slice(chunk), &self.sp, comparator)
+                    .first()
+                    .0 as u16;
+            })
     }
 
     pub fn reconstruct<C: VectorComparator>(&self, quantized: &[u8], vectors: &Vectors) -> Vec<u8> {

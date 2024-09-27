@@ -121,7 +121,7 @@ impl Layer {
 
     pub fn from_data(mut data: Vec<u8>, single_neighborhood_size: usize) -> Self {
         data.shrink_to_fit();
-        assert!(data.capacity() == 0);
+        assert!(data.len() - data.capacity() == 0);
         assert_eq!(
             0,
             data.len() % (4 * single_neighborhood_size),

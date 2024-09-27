@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, time::SystemTime};
 
 use clap::Parser;
 use hnsw_redux::{
@@ -21,10 +21,12 @@ struct Command {
 fn main() -> io::Result<()> {
     let args = Command::parse();
     eprintln!("About to index vectors: {}", &args.name);
+    let start = SystemTime::now();
     let vectors = Vectors::load(&args.vector_directory, &args.name)?;
 
     let mut hnsw: IndexConfiguration =
         Hnsw1024::generate(args.name, vectors, &BuildParams::default()).into();
+    eprintln!("{}: done generating", start.elapsed().unwrap().as_secs());
 
     let sp = SearchParams::default();
     let mut seed = 0x533D;
@@ -39,6 +41,10 @@ fn main() -> io::Result<()> {
     while recall < 1.0 && improvement > 0.001 {
         seed += 1;
         hnsw.improve_neighbors_in_all_layers(&sp);
+        eprintln!(
+            "{}: done improving neighbors",
+            start.elapsed().unwrap().as_secs()
+        );
         let new_recall = hnsw.test_recall(&sp, seed);
         improvement = new_recall - recall;
         recall = new_recall;

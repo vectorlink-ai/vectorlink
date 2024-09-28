@@ -197,25 +197,18 @@ impl Index for Hnsw1024 {
             .open(path)
             .unwrap();
         let record_size = k * (size_of::<(u32, f32)>());
-        let total_records = self.hnsw.num_vectors();
-        // write a fake final record to avoid data races.
-        let last_data: Vec<u8> = vec![0; record_size];
-        let last_record = (total_records - 1) as u64 * record_size as u64;
-        file.write_all_at(&last_data, last_record).unwrap();
-        file.sync_all().unwrap();
-        eprintln!("final written");
-        let results: Vec<_> = self.hnsw.knn(k, sp, &comparator).collect();
-        for (i, mut pairs) in results {
-            pairs.resize(k, (u32::MAX, f32::MAX));
-            let pairs_len = pairs.len();
-            assert_eq!(pairs_len, k);
-            let raw_data: &[u8] =
-                unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
-            let address = (i as usize * record_size) as u64;
-            assert_eq!(raw_data.len(), record_size);
-            file.write_all_at(raw_data, address)
-                .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
-        }
+        self.hnsw
+            .knn(k, sp, &comparator)
+            .for_each(|(i, mut pairs)| {
+                pairs.resize(k, (u32::MAX, f32::MAX));
+                let pairs_len = pairs.len();
+                assert_eq!(pairs_len, k);
+                let raw_data: &[u8] =
+                    unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+                let address = (i as usize * record_size) as u64;
+                file.write_all_at(raw_data, address)
+                    .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
+            });
     }
 }
 

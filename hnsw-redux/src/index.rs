@@ -1,5 +1,6 @@
 use enum_dispatch::enum_dispatch;
 use rayon::iter::ParallelIterator;
+use std::fs::OpenOptions;
 use std::os::unix::prelude::FileExt;
 use std::{fs::File, path::Path};
 
@@ -189,15 +190,32 @@ impl Index for Hnsw1024 {
 
     fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
         let comparator = CosineDistance1024::new(&self.vectors);
-        let file = File::create(path).unwrap();
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .unwrap();
         let record_size = k * (size_of::<(u32, f32)>());
-
-        self.hnsw.knn(k, sp, &comparator).for_each(|(i, pairs)| {
-            let raw_data =
+        let total_records = self.hnsw.num_vectors();
+        // write a fake final record to avoid data races.
+        let last_data: Vec<u8> = vec![0; record_size];
+        let last_record = (total_records - 1) as u64 * record_size as u64;
+        file.write_all_at(&last_data, last_record).unwrap();
+        file.sync_all().unwrap();
+        eprintln!("final written");
+        let results: Vec<_> = self.hnsw.knn(k, sp, &comparator).collect();
+        for (i, mut pairs) in results {
+            pairs.resize(k, (u32::MAX, f32::MAX));
+            let pairs_len = pairs.len();
+            assert_eq!(pairs_len, k);
+            let raw_data: &[u8] =
                 unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
-            file.write_all_at(raw_data, (i as usize * record_size) as u64)
-                .unwrap()
-        });
+            let address = (i as usize * record_size) as u64;
+            assert_eq!(raw_data.len(), record_size);
+            file.write_all_at(raw_data, address)
+                .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
+        }
     }
 }
 
@@ -211,7 +229,7 @@ mod tests {
         },
         params::BuildParams,
         pq::{create_pq, VectorRangeIndexableForVectors},
-        test_util::random_vectors,
+        test_util::{random_vectors, random_vectors_normalized},
     };
 
     use super::*;
@@ -262,5 +280,37 @@ mod tests {
         let recall = index.test_recall_with_proportion(0.10, &sp, 0x533D);
         eprintln!("recall: {recall}");
         assert!(recall > 0.95);
+    }
+
+    #[test]
+    fn write_knn() {
+        let number_of_vecs = 1_000;
+        let vecs = random_vectors_normalized::<1024>(number_of_vecs, 0x533D);
+        let comparator = CosineDistance1024::new(&vecs);
+        let bp = BuildParams::default();
+        let hnsw = Hnsw::generate(&bp, &comparator);
+        let mut sp = SearchParams::default();
+        sp.circulant_parameter_count = 8;
+        sp.parallel_visit_count = 12;
+
+        let mut index = Hnsw1024 {
+            hnsw,
+            vectors: vecs,
+            name: "my_hnsw".to_string(),
+        };
+        let mut recall = 0.0;
+        let mut last_recall = 0.0;
+        let mut improvement = 1.0;
+        while recall < 1.0 && improvement > 0.1 {
+            index.improve_neighbors_in_all_layers(&Default::default());
+            recall = index.test_recall(&sp, 0x533D);
+            eprintln!("recall: {recall}");
+            improvement = recall - last_recall;
+            last_recall = recall;
+        }
+
+        assert!(recall > 0.999);
+
+        index.knn(20, &sp, "/tmp/dump")
     }
 }

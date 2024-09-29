@@ -29,7 +29,6 @@ impl SimdAlignedAllocation {
         if data.is_null() {
             alloc::handle_alloc_error(layout);
         }
-        eprintln!("just allocated {data:?}");
         let data = unsafe { NonNull::new_unchecked(data) };
         Self { data, len }
     }

@@ -12,7 +12,7 @@ pub fn random_vectors(num_vecs: usize, dimension: usize, seed: u64) -> Vectors {
         *elt = rng.gen_range(-1.0..1.0);
     }
 
-    Vectors::new(data, byte_len)
+    Vectors::new(data, dimension * std::mem::size_of::<f32>())
 }
 
 pub fn random_vectors_normalized<const DIMENSION: usize>(num_vecs: usize, seed: u64) -> Vectors {

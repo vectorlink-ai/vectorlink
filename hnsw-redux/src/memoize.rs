@@ -7,7 +7,7 @@ use std::simd::{
 
 use rayon::prelude::*;
 
-use crate::vectors::Vectors;
+use crate::{util::aligned_256_vec_init_zeroed, vectors::Vectors};
 
 // i < j, i != j
 #[inline]
@@ -56,6 +56,21 @@ pub fn offsets_to_indexes(n: usize, offsets: usizex8) -> (usizex8, usizex8) {
 #[inline]
 pub fn triangle_lookup_length(n: usize) -> usize {
     index_to_offset(n, n - 2, n - 1) + 1
+}
+
+pub fn untriangle_distances(n: usize, distances: &[f32]) -> Vec<f32> {
+    let mut result: Vec<f32> = aligned_256_vec_init_zeroed(n * n);
+    let result_ptr = result.as_mut_ptr() as usize;
+    (0..n)
+        .into_par_iter()
+        .zip(distances.par_iter().copied())
+        .map(|(offset, distance)| (offset_to_index(n, offset), distance))
+        .for_each(|((i, j), distance)| unsafe {
+            ((result_ptr as *mut f32).add(i * n + j)).write(distance);
+            ((result_ptr as *mut f32).add(j * n + i)).write(distance);
+        });
+
+    result
 }
 
 pub trait CentroidDistanceCalculator: Sync {

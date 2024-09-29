@@ -11,7 +11,7 @@ use crate::{
     hnsw::Hnsw,
     index::{Hnsw1024, IndexConfiguration},
     layer::Layer,
-    util::{aligned_256_vec, SimdAlignedAllocation},
+    util::SimdAlignedAllocation,
     vectors::Vectors,
 };
 

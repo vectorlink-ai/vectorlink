@@ -1,9 +1,6 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use crate::{
-    util::{aligned_256_vec, SimdAlignedAllocation},
-    vectors::Vectors,
-};
+use crate::{util::SimdAlignedAllocation, vectors::Vectors};
 
 pub fn random_vectors(num_vecs: usize, dimension: usize, seed: u64) -> Vectors {
     let mut rng = StdRng::seed_from_u64(seed);

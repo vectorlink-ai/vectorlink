@@ -1,11 +1,9 @@
 use std::{
-    alloc::Layout,
     fs::File,
     io::{self, Read},
     ops::{Index, IndexMut},
     os::unix::fs::MetadataExt,
     path::Path,
-    ptr::NonNull,
 };
 
 use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};

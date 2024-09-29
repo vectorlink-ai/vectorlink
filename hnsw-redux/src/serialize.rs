@@ -1,10 +1,14 @@
 use std::{
     fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
-    os::{fd::AsRawFd, unix::fs::MetadataExt},
+    io::{self, Write},
+    os::{
+        fd::AsRawFd,
+        unix::fs::{FileExt, MetadataExt},
+    },
     path::{Path, PathBuf},
 };
 
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -51,7 +55,7 @@ impl Vectors {
 
         // we don't want this read to be buffered, because vector
         // files are huge, and buffering is expensive.
-        let mut vector_file = OpenOptions::new()
+        let vector_file = OpenOptions::new()
             .read(true)
             .open(Self::vec_path(directory, identity))?;
         let raw_fd = vector_file.as_raw_fd();
@@ -70,7 +74,15 @@ impl Vectors {
         let mut data =
             unsafe { SimdAlignedAllocation::alloc(vector_file.metadata()?.size() as usize) };
         eprintln!("allocated");
-        vector_file.read_exact(&mut data[..])?;
+        const PART_SIZE: usize = 1 << 30;
+        data.par_chunks_mut(PART_SIZE)
+            .enumerate()
+            .for_each(|(ix, part)| {
+                // TODO handle error properly
+                vector_file
+                    .read_exact_at(part, (ix * PART_SIZE) as u64)
+                    .unwrap()
+            });
         eprintln!("vector data loaded...");
         Ok(Self::new(data, meta.vector_byte_size))
     }

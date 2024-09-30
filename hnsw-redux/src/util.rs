@@ -52,7 +52,7 @@ impl SimdAlignedAllocation {
         unsafe {
             std::slice::from_raw_parts(
                 self.data.as_ptr() as *const Simd<T, LANES>,
-                self.len / (8 * std::mem::size_of::<T>() * LANES),
+                Self::rounded_len(self.len) / (std::mem::size_of::<T>() * LANES),
             )
         }
     }
@@ -65,7 +65,7 @@ impl SimdAlignedAllocation {
         unsafe {
             std::slice::from_raw_parts_mut(
                 self.data.as_ptr() as *mut Simd<T, LANES>,
-                self.len / (8 * std::mem::size_of::<T>() * LANES),
+                Self::rounded_len(self.len) / (std::mem::size_of::<T>() * LANES),
             )
         }
     }

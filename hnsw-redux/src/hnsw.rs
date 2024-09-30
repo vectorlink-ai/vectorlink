@@ -299,7 +299,7 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
 mod tests {
 
     use crate::{
-        comparator::{CosineDistance1024, EuclideanDistance8x8},
+        comparator::{CosineDistance1024, CosineDistance1536, EuclideanDistance8x8},
         hnsw::Hnsw,
         test_util::{random_vectors, random_vectors_normalized},
     };
@@ -353,7 +353,7 @@ mod tests {
     fn construct_unquantized_1536_hnsw() {
         let number_of_vecs = 100_000;
         let vecs = random_vectors_normalized::<1536>(number_of_vecs, 0x533D);
-        let comparator = CosineDistance1024::new(&vecs);
+        let comparator = CosineDistance1536::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);
         let mut sp = SearchParams::default();

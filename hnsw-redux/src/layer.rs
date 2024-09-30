@@ -161,7 +161,7 @@ impl Layer {
 
         (0..self.number_of_neighborhoods())
             .into_par_iter()
-            .map(|vector_id| &self[vector_id as usize])
+            .map(|vector_id| &self[vector_id])
             .zip(distances.par_chunks_mut(self.single_neighborhood_size))
             .enumerate()
             .flat_map(|(i, (neighborhoods, distances))| {
@@ -676,10 +676,16 @@ impl Layer {
         let buffer_size =
             neighborhood_size * (sp.parallel_visit_count + sp.circulant_parameter_count);
         (0..node_count as u32).into_par_iter().map(move |node_id| {
-            let mut search_queue = OrderedRingQueue::new(k);
             let mut uninitialized_visit_queue = OrderedRingQueue::new(sp.search_queue_len);
+            let mut search_queue =
+                OrderedRingQueue::new_with(sp.search_queue_len, &[node_id], &[0.0]);
             let mut ids = Vec::with_capacity(buffer_size);
             let mut priorities = Vec::with_capacity(buffer_size);
+            unsafe {
+                ids.set_len(buffer_size);
+                priorities.set_len(buffer_size);
+            }
+
             self.closest_vectors(
                 Vector::Id(node_id),
                 &mut search_queue,
@@ -689,7 +695,9 @@ impl Layer {
                 sp,
                 comparator,
             );
-            (node_id, search_queue.get_all())
+            let mut results = search_queue.get_all();
+            results.truncate(k);
+            (node_id, results)
         })
     }
 }

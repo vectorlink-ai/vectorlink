@@ -1,21 +1,18 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-use crate::{util::aligned_256_vec, vectors::Vectors};
+use crate::{util::SimdAlignedAllocation, vectors::Vectors};
 
 pub fn random_vectors(num_vecs: usize, dimension: usize, seed: u64) -> Vectors {
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut data: Vec<f32> = aligned_256_vec(num_vecs * dimension);
-    data.extend((0..num_vecs * dimension).map(|_| rng.gen_range(-1.0..1.0)));
-    let data_cast = unsafe {
-        Vec::from_raw_parts(
-            data.as_mut_ptr() as *mut u8,
-            data.len() * std::mem::size_of::<f32>(),
-            data.capacity(),
-        )
-    };
-    std::mem::forget(data);
+    let float_len = num_vecs * dimension;
+    let byte_len = float_len * std::mem::size_of::<f32>();
+    let mut data = unsafe { SimdAlignedAllocation::alloc(byte_len) };
+    let slice = unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut f32, float_len) };
+    for elt in slice.iter_mut() {
+        *elt = rng.gen_range(-1.0..1.0);
+    }
 
-    Vectors::new(data_cast, dimension * std::mem::size_of::<f32>())
+    Vectors::new(data, dimension * std::mem::size_of::<f32>())
 }
 
 pub fn random_vectors_normalized<const DIMENSION: usize>(num_vecs: usize, seed: u64) -> Vectors {

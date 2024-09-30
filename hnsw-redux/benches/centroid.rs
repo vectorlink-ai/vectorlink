@@ -29,8 +29,9 @@ fn bench_symmetrize(b: &mut Bencher) {
     let bp = BuildParams::default();
     let mut hnsw = Hnsw::generate(&bp, &comparator);
     let layer = hnsw.get_layer_mut(hnsw.layer_count() - 1);
+    let mut distances = layer.neighborhood_distances(&comparator);
 
-    b.iter(|| layer.symmetrize(&comparator));
+    b.iter(|| layer.symmetrize(&mut distances));
 }
 
 #[bench]

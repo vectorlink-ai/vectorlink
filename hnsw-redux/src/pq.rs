@@ -10,6 +10,7 @@ use crate::{
     memoize::{CentroidDistanceCalculatorConstructor, MemoizedCentroidDistances},
     params::{BuildParams, SearchParams},
     ring_queue::OrderedRingQueue,
+    util::SimdAlignedAllocation,
     vectors::{Vector, Vectors},
 };
 
@@ -68,7 +69,7 @@ impl<'a> VectorRangeIndexable for VectorRangeIndexableForVectors<'a> {
         assert!(!byte_ranges.is_empty());
         let vector_count = byte_ranges.len();
         let vector_byte_size = byte_ranges[0].len();
-        let mut data: Vec<u8> = vec![0; vector_count * vector_byte_size];
+        let mut data = SimdAlignedAllocation::alloc_zeroed(vector_count * vector_byte_size);
         byte_ranges
             .into_par_iter()
             .zip(data.par_chunks_mut(vector_byte_size))
@@ -159,21 +160,17 @@ impl Quantizer {
         comparator: &C,
     ) -> Vectors {
         let total_byte_size = num_vecs * C::vector_byte_size();
-        let mut data = Vec::with_capacity(total_byte_size);
-        vecs.zip(data.spare_capacity_mut().chunks_mut(C::vector_byte_size()))
+        let mut data = unsafe { SimdAlignedAllocation::alloc(total_byte_size) };
+        vecs.zip(data.chunks_mut(C::vector_byte_size()))
             .enumerate()
             .par_bridge()
             .for_each(|(ix, (v, out))| {
                 if ix % 10000 == 0 {
                     eprintln!("quantizing {ix}");
                 }
-                let out_cast: &mut [u8] = unsafe { std::mem::transmute(out) };
-                self.quantize(v, comparator, out_cast);
+                self.quantize(v, comparator, out);
             });
 
-        unsafe {
-            data.set_len(total_byte_size);
-        }
         Vectors::new(data, C::vector_byte_size())
     }
 

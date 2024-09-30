@@ -8,7 +8,10 @@ use std::{
 
 use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
-use crate::vecmath::{normalize_aligned_1024, normalize_aligned_1536};
+use crate::{
+    util::SimdAlignedAllocation,
+    vecmath::{normalize_aligned_1024, normalize_aligned_1536},
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Vector<'a> {
@@ -16,19 +19,14 @@ pub enum Vector<'a> {
     Id(u32),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Vectors {
-    data: Vec<u8>,
+    data: SimdAlignedAllocation,
     vector_byte_size: usize,
 }
 
 impl Vectors {
-    pub fn new(data: Vec<u8>, vector_byte_size: usize) -> Self {
-        assert_eq!(
-            data.as_ptr() as usize % 256,
-            0,
-            "vector data is not aligned to 256 bit (for avx2)"
-        );
+    pub fn new(data: SimdAlignedAllocation, vector_byte_size: usize) -> Self {
         assert_eq!(0, data.len() % vector_byte_size);
         Self {
             data,
@@ -57,12 +55,8 @@ impl Vectors {
         vector_byte_size: usize,
     ) -> io::Result<Self> {
         let len = num_vecs * vector_byte_size;
-        let mut data = Vec::with_capacity(len);
-        let slice: &mut [u8] = unsafe { std::mem::transmute(data.spare_capacity_mut()) };
-        reader.read_exact(slice)?;
-        unsafe {
-            data.set_len(len);
-        }
+        let mut data = unsafe { SimdAlignedAllocation::alloc(len) };
+        reader.read_exact(&mut data[..])?;
 
         Ok(Self::new(data, vector_byte_size))
     }

@@ -65,18 +65,39 @@ impl<'a> LayerOptimizer<'a> {
         });
     }
 
-    pub fn improve_neighbors<S: VectorSearcher>(&mut self, searcher: &S) {
+    pub fn improve_all_neighbors<S: VectorSearcher>(&mut self, searcher: &S) {
+        self.improve_neighbors(searcher, (0..self.queues.len() as u32).into_par_iter())
+    }
+
+    pub fn improve_neighbors<S: VectorSearcher, I: ParallelIterator<Item = u32>>(
+        &mut self,
+        searcher: &S,
+        iter: I,
+    ) {
         eprintln!("improve neighbors: optimizing neighborhoods");
         // optimize neighborhoods
-        (0..self.queues.len() as u32).into_par_iter().for_each(|i| {
+        iter.for_each(|i| {
             let results = searcher.search(i);
+            if i == 45 {
+                //eprintln!("improve_neighbors found {:?}", results);
+            }
             for (id, priority) in results.iter() {
                 let new_pair = (i, priority);
                 if i == id {
                     continue;
                 }
                 //eprintln!("inserting into: {}", neighbor.0);
-                self.get(id).insert(new_pair);
+                let mut destination_queue = self.get(id);
+                if i == 45 {
+                    //eprintln!("destination queue before insert: {destination_queue:?}");
+                }
+                let result = destination_queue.insert(new_pair);
+                if i == 45 && result {
+                    //eprintln!("swapped!");
+                }
+                if i == 45 {
+                    //eprintln!("destination queue before insert: {destination_queue:?}");
+                }
             }
         });
     }

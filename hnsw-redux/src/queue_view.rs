@@ -1,5 +1,9 @@
-use std::simd::{cmp::SimdPartialOrd, f32x8, u32x8};
+use std::{
+    fmt::Debug,
+    simd::{cmp::SimdPartialOrd, f32x8, u32x8},
+};
 
+#[derive(Debug)]
 pub struct QueueView<'a> {
     pub(crate) neighbors: &'a mut [u32],
     pub(crate) distances: &'a mut [f32],

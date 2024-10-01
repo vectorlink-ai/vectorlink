@@ -279,7 +279,15 @@ impl Layer {
         }
     }
 
-    pub fn copy_neighbors(&self, vector_id: u32, result: &mut [u32]) {
+    pub fn copy_neighbors(&self, vector_id: u32) -> Vec<u32> {
+        let mut result = vec![0_u32; self.single_neighborhood_size];
+
+        self.copy_neighbors_into(vector_id, &mut result);
+
+        result
+    }
+
+    pub fn copy_neighbors_into(&self, vector_id: u32, result: &mut [u32]) {
         debug_assert_eq!(result.len(), self.single_neighborhood_size());
         let offset = self.single_neighborhood_size * vector_id as usize;
         result.copy_from_slice(&self.neighborhoods[offset..offset + self.single_neighborhood_size]);
@@ -294,7 +302,7 @@ impl Layer {
             .par_iter()
             .zip(results.par_chunks_mut(self.single_neighborhood_size))
             .for_each(|(&vector_id, neighborhood_out)| {
-                self.copy_neighbors(vector_id, neighborhood_out);
+                self.copy_neighbors_into(vector_id, neighborhood_out);
             });
     }
 
@@ -322,6 +330,7 @@ impl Layer {
         results: &mut Vec<u32>,
         seen: &mut Bitmap,
     ) {
+        results.clear();
         let mut swapped = false;
         for _i in 0..distance {
             // figure out how many results we're going to get, and set
@@ -443,7 +452,7 @@ impl Layer {
                         )
                     })
                     .collect();
-                distances_for_vec.sort_unstable_by_key(|(_, x)| OrderedFloat(*x));
+                distances_for_vec.sort_unstable_by_key(|(n, x)| (OrderedFloat(*x), *n));
                 for i in 0..single_neighborhood_size {
                     let ptr = &mut neighborhood_slice[i];
 
@@ -500,7 +509,7 @@ impl Layer {
         single_neighborhood_size: usize,
         grouper: &G,
         comparator: &C,
-    ) -> (Self, SimdAlignedAllocation<f32>) {
+    ) -> Self {
         let size = num_vecs * single_neighborhood_size;
         let mut neighborhoods: SimdAlignedAllocation<u32> =
             unsafe { SimdAlignedAllocation::alloc(size) };
@@ -551,28 +560,49 @@ impl Layer {
             single_neighborhood_size,
         };
 
-        let distances = result.sort_neighborhoods(comparator);
+        //let distances = result.sort_neighborhoods(comparator);
 
-        (result, distances)
+        result
     }
 
-    fn sort_neighborhoods<C: VectorComparator>(
+    pub fn sort_neighborhoods<C: VectorComparator>(
         &mut self,
         comparator: &C,
     ) -> SimdAlignedAllocation<f32> {
-        let memoized_distances = self.neighborhood_distances(comparator);
+        println!("sort neighborhood");
+        let mut memoized_distances = self.neighborhood_distances(comparator);
         self.neighborhoods
             .par_chunks_mut(self.single_neighborhood_size)
-            .zip(memoized_distances.par_chunks(self.single_neighborhood_size))
-            .for_each(|(neighborhood, distances)| {
+            .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
+            .enumerate()
+            .for_each(|(vector_id, (neighborhood, distances))| {
+                if vector_id == 45 {
+                    eprintln!(
+                        "neighborhood: {:?}\ndistances: {:?}",
+                        neighborhood, distances
+                    );
+                }
                 let mut pairs: Vec<_> = neighborhood
                     .iter()
                     .copied()
                     .zip(distances.iter().copied())
                     .collect();
-                pairs.sort_unstable_by_key(|p| OrderedFloat(p.1));
-                for (ix, (n, _)) in pairs.into_iter().enumerate() {
+                pairs.sort_unstable_by_key(|p| (OrderedFloat(p.1), p.0));
+                pairs.dedup();
+                let pairs_len = pairs.len();
+                for (ix, (n, d)) in pairs.into_iter().enumerate() {
                     neighborhood[ix] = n;
+                    distances[ix] = d;
+                }
+                for ix in pairs_len..self.single_neighborhood_size {
+                    neighborhood[ix] = u32::MAX;
+                    distances[ix] = f32::MAX;
+                }
+                if vector_id == 45 {
+                    eprintln!(
+                        "neighborhood: {:?}\ndistances: {:?}",
+                        neighborhood, distances
+                    );
                 }
             });
 

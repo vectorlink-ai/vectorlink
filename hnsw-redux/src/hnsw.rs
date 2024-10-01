@@ -24,6 +24,17 @@ impl Hnsw {
         self.layers
     }
 
+    fn with_temp_hnsw<R, F: Fn(&Hnsw) -> R>(layers: &mut Vec<Layer>, func: F) -> R {
+        let mut temp_layers = Vec::new();
+        std::mem::swap(&mut temp_layers, layers);
+        let hnsw = Hnsw::new(temp_layers);
+        let result = func(&hnsw);
+        temp_layers = hnsw.into_inner();
+        std::mem::swap(&mut temp_layers, layers);
+
+        result
+    }
+
     pub fn search<C: VectorComparator>(
         &self,
         query_vec: Vector,
@@ -94,6 +105,9 @@ impl Hnsw {
         let zero_layer = Layer::build_perfect(layer_nodes, bp.neighborhood_size, comparator);
         eprintln!("perfect first layer built");
         let mut layers = vec![zero_layer];
+
+        let mut search_vector_ids = Vec::new();
+        let mut result_vector_ids = Vec::new();
         while num_vecs > layer_nodes {
             layer_nodes *= bp.order;
             eprintln!("layer nodes: {layer_nodes}");
@@ -111,10 +125,37 @@ impl Hnsw {
                 layers: &layers,
                 sp: &bp.optimize_sp,
             };
-            let mut new_layer = Layer::build_grouped(vec_count, single_neighborhood_size, &grouper);
-            // we are going to push the buffer in a second, so +1
-            eprintln!("symmetrizing layer {}", layers.len() + 1);
-            new_layer.symmetrize(comparator);
+            let mut new_layer =
+                Layer::build_grouped(vec_count, single_neighborhood_size, &grouper, comparator);
+
+            let mut memoized_distances = new_layer.sort_neighborhoods(comparator);
+
+            // we are going to push the buffer in a second, so layers.len()+1
+            {
+                let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
+                eprintln!("symmetrizing layer {}", layers.len() + 1);
+                optimizer.symmetrize();
+            }
+            layers.push(new_layer);
+            Hnsw::with_temp_hnsw(&mut layers, |hnsw| {
+                let proportion = 1.0;
+                let recall =
+                    hnsw.test_recall(proportion, &SearchParams::default(), comparator, 0x533D);
+                eprintln!("recall after symmetrize: {recall}");
+            });
+            new_layer = layers.pop().unwrap();
+            search_vector_ids.clear();
+            search_vector_ids.extend(0..layers.last().unwrap().number_of_neighborhoods() as u32);
+            new_layer.par_find_unconnected_neighbors(
+                1,
+                &mut search_vector_ids,
+                &mut result_vector_ids,
+            );
+            eprintln!(
+                "found {} unconnected nodes (out of {})",
+                result_vector_ids.len(),
+                new_layer.number_of_neighborhoods()
+            );
             layers.push(new_layer.clone());
             let grouper = SearchGrouper {
                 comparator,
@@ -122,21 +163,20 @@ impl Hnsw {
                 sp: &bp.optimize_sp,
             };
             eprintln!("improving layer {}", layers.len());
-            new_layer.improve_neighbors(comparator, &grouper);
+            let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
+            optimizer.improve_neighbors(&grouper, result_vector_ids.par_iter().copied());
+            //optimizer.improve_all_neighbors(&grouper);
             *layers.last_mut().unwrap() = new_layer;
             let temporary_hnsw = Hnsw::new(layers);
 
-            let proportion = 1.0 / (temporary_hnsw.num_vectors() as f32).sqrt();
+            let proportion = 1.0;
             let recall = temporary_hnsw.test_recall(
                 proportion,
                 &SearchParams::default(),
                 comparator,
                 0x533D,
             );
-            eprintln!(
-                "recall at layer {}: {recall}",
-                temporary_hnsw.layer_count() + 1
-            );
+            eprintln!("recall at layer {}: {recall}", temporary_hnsw.layer_count());
 
             layers = temporary_hnsw.into_inner();
         }
@@ -166,6 +206,8 @@ impl Hnsw {
         optimize_sp: &SearchParams,
         comparator: &C,
     ) {
+        let mut search_vector_ids = Vec::new();
+        let mut result_vector_ids = Vec::new();
         for i in 1..self.layers.len() {
             let (top, bottom) = self.layers.split_at_mut(i);
             let pseudo_layer = bottom[0].clone();
@@ -179,7 +221,25 @@ impl Hnsw {
                 sp: optimize_sp,
             };
 
-            bottom[0].improve_neighbors(comparator, &searcher);
+            search_vector_ids.clear();
+            search_vector_ids.extend(0..top.last().unwrap().number_of_neighborhoods() as u32);
+            bottom[0].par_find_unconnected_neighbors(
+                1,
+                &mut search_vector_ids,
+                &mut result_vector_ids,
+            );
+
+            eprintln!(
+                "{i}: found {} unconnected vecs (out of {})",
+                result_vector_ids.len(),
+                bottom[0].number_of_neighborhoods()
+            );
+
+            let mut distances = bottom[0].neighborhood_distances(comparator);
+            let mut optimizer = bottom[0].get_optimizer(&mut distances);
+
+            optimizer.improve_neighbors(&searcher, result_vector_ids.par_iter().copied());
+            //optimizer.improve_all_neighbors(&searcher);
         }
     }
 

@@ -21,12 +21,12 @@ pub enum Vector<'a> {
 
 #[derive(Clone)]
 pub struct Vectors {
-    data: SimdAlignedAllocation,
+    data: SimdAlignedAllocation<u8>,
     vector_byte_size: usize,
 }
 
 impl Vectors {
-    pub fn new(data: SimdAlignedAllocation, vector_byte_size: usize) -> Self {
+    pub fn new(data: SimdAlignedAllocation<u8>, vector_byte_size: usize) -> Self {
         assert_eq!(0, data.len() % vector_byte_size);
         Self {
             data,

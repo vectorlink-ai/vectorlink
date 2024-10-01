@@ -1,4 +1,4 @@
-use crate::{bitmap::Bitmap, layer::OrderedFloat};
+use crate::bitmap::Bitmap;
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -325,21 +325,16 @@ impl<'a> OrderedRingQueue<'a> {
         Self(RingQueue::new_with(capacity, ids, priorities))
     }
     pub fn new_with_mut_slices(ids_slice: &'a mut [u32], priorities_slice: &'a mut [f32]) -> Self {
-        let mut temporary_pairs: Vec<(u32, f32)> = ids_slice
+        // assume sorted
+        let len = ids_slice
             .iter()
-            .zip(&*priorities_slice)
-            .map(|(x, y)| (*x, *y))
-            .collect();
-        temporary_pairs.sort_by_key(|(i, f)| (OrderedFloat(*f), *i));
-        let mut ring_queue = Self(RingQueue::new_with_mut_slices(
-            0,
+            .position(|&id| id == u32::MAX)
+            .unwrap_or(ids_slice.len());
+        Self(RingQueue::new_with_mut_slices(
+            len,
             ids_slice,
             priorities_slice,
-        ));
-        temporary_pairs.iter().for_each(|pair| {
-            ring_queue.insert(*pair);
-        });
-        ring_queue
+        ))
     }
 
     pub fn new(capacity: usize) -> Self {

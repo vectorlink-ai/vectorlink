@@ -1,4 +1,4 @@
-use byteorder::{BigEndian, NativeEndian, ReadBytesExt};
+use byteorder::{NativeEndian, ReadBytesExt};
 use clap::Parser;
 use csv::Writer;
 use std::io::{prelude::*, SeekFrom};
@@ -39,7 +39,7 @@ fn get_record(
 ) -> serde_json::Value {
     let (start, end) = get_record_position(record_number, index_file);
     record_file.seek(SeekFrom::Start(start)).unwrap();
-    let mut buf: Vec<u8> = vec![0; (end-start) as usize];
+    let mut buf: Vec<u8> = vec![0; (end - start) as usize];
     record_file.read_exact(&mut buf).unwrap();
     let json_string = std::str::from_utf8(&buf).expect("Not a valid json string");
     serde_json::from_str(&json_string).unwrap()
@@ -57,13 +57,15 @@ fn main() -> io::Result<()> {
 
     let mut output_table =
         Writer::from_path(args.output_table).expect("could not open output table");
-    output_table.write_record(&[
-        "ROOT_DATAFILE_ID",
-        "ROOT_ROW_ID",
-        "DATAFILE_ID",
-        "ROW_ID",
-        "DISTANCE",
-    ]).unwrap();
+    output_table
+        .write_record(&[
+            "ROOT_DATAFILE_ID",
+            "ROOT_ROW_ID",
+            "DATAFILE_ID",
+            "ROW_ID",
+            "DISTANCE",
+        ])
+        .unwrap();
 
     for i in 0..num_records {
         let central_record = get_record(i, &mut record_file, &mut index_file);
@@ -71,20 +73,24 @@ fn main() -> io::Result<()> {
         let root_record_id = central_record.get("ROW_ID").unwrap().as_str().unwrap();
         for _j in 0..args.match_length {
             let neighbor_id = search_file.read_u32::<NativeEndian>().unwrap();
-	    if neighbor_id == u32::MAX {
-		break;
-	    }
+            if neighbor_id == u32::MAX {
+                break;
+            }
             let neighbor_distance = search_file.read_f32::<NativeEndian>().unwrap();
-	    if neighbor_distance < args.threshold {
-		let neighbor_record =
+            if neighbor_distance < args.threshold {
+                let neighbor_record =
                     get_record(neighbor_id as usize, &mut record_file, &mut index_file);
-		let file_id = neighbor_record.get("DATAFILE_ID").unwrap().as_str().unwrap();
-		let record_id = neighbor_record.get("ROW_ID").unwrap().as_str().unwrap();
-		let distance = format!("{neighbor_distance}");
-		output_table
+                let file_id = neighbor_record
+                    .get("DATAFILE_ID")
+                    .unwrap()
+                    .as_str()
+                    .unwrap();
+                let record_id = neighbor_record.get("ROW_ID").unwrap().as_str().unwrap();
+                let distance = format!("{neighbor_distance}");
+                output_table
                     .write_record([root_file_id, root_record_id, file_id, record_id, &distance])
                     .expect("Could not write csv record");
-	    }
+            }
         }
     }
 

@@ -13,9 +13,9 @@ impl Default for BuildParams {
             neighborhood_size: 24,
             bottom_neighborhood_size: 48,
             optimize_sp: SearchParams {
-                parallel_visit_count: 1,
-                visit_queue_len: 100,
-                search_queue_len: 30,
+                parallel_visit_count: 12,
+                visit_queue_len: 300,
+                search_queue_len: 100,
                 circulant_parameter_count: 0,
             },
         }

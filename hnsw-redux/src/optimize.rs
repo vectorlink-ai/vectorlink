@@ -76,28 +76,19 @@ impl<'a> LayerOptimizer<'a> {
     ) {
         eprintln!("improve neighbors: optimizing neighborhoods");
         // optimize neighborhoods
-        iter.for_each(|i| {
-            let results = searcher.search(i);
-            if i == 45 {
+        iter.for_each(|query_vector_id| {
+            let results = searcher.search(query_vector_id);
+            if query_vector_id == 45 {
                 //eprintln!("improve_neighbors found {:?}", results);
             }
-            for (id, priority) in results.iter() {
-                let new_pair = (i, priority);
-                if i == id {
+            for (found_vector_id, priority) in results.iter() {
+                let new_pair = (query_vector_id, priority);
+                if query_vector_id == found_vector_id {
                     continue;
                 }
                 //eprintln!("inserting into: {}", neighbor.0);
-                let mut destination_queue = self.get(id);
-                if i == 45 {
-                    //eprintln!("destination queue before insert: {destination_queue:?}");
-                }
+                let mut destination_queue = self.get(found_vector_id);
                 let result = destination_queue.insert(new_pair);
-                if i == 45 && result {
-                    //eprintln!("swapped!");
-                }
-                if i == 45 {
-                    //eprintln!("destination queue before insert: {destination_queue:?}");
-                }
             }
         });
     }

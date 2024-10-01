@@ -332,7 +332,7 @@ impl Layer {
     ) {
         results.clear();
         let mut swapped = false;
-        for _i in 0..distance {
+        for i in 0..distance {
             // figure out how many results we're going to get, and set
             // the length of the result vector accordingly.
             let len = self.single_neighborhood_size * search_vector_ids.len();
@@ -343,10 +343,12 @@ impl Layer {
             }
 
             // get the next convolution of neighbors out
+            eprintln!("iteration {i}: search queue is {}", search_vector_ids.len());
             self.par_extract_neighbors(search_vector_ids, results);
 
             // register results with the 'seen' bitmap.
             // this will also modify duplicate results to u32::MAX
+            eprintln!("iteration {i}: found {} connecteds", results.len());
             seen.check_set_from_ids(results);
 
             // sort the results, and dedup to eliminate double
@@ -377,7 +379,9 @@ impl Layer {
         search_vector_ids: &mut Vec<u32>,
         result_vector_ids: &mut Vec<u32>,
     ) {
+        result_vector_ids.clear();
         let mut seen = Bitmap::new(self.number_of_neighborhoods());
+        seen.set_from_ids(search_vector_ids);
 
         // find out what /is/ connected.
         self.par_flood_find_neighbors(distance, search_vector_ids, result_vector_ids, &mut seen);
@@ -576,12 +580,6 @@ impl Layer {
             .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
             .enumerate()
             .for_each(|(vector_id, (neighborhood, distances))| {
-                if vector_id == 45 {
-                    eprintln!(
-                        "neighborhood: {:?}\ndistances: {:?}",
-                        neighborhood, distances
-                    );
-                }
                 let mut pairs: Vec<_> = neighborhood
                     .iter()
                     .copied()
@@ -597,12 +595,6 @@ impl Layer {
                 for ix in pairs_len..self.single_neighborhood_size {
                     neighborhood[ix] = u32::MAX;
                     distances[ix] = f32::MAX;
-                }
-                if vector_id == 45 {
-                    eprintln!(
-                        "neighborhood: {:?}\ndistances: {:?}",
-                        neighborhood, distances
-                    );
                 }
             });
 

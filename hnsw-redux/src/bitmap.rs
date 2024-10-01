@@ -17,7 +17,7 @@ pub struct Bitmap {
 impl Clone for Bitmap {
     fn clone(&self) -> Self {
         let u64_len = (self.len + 4095) / 64;
-        let mut data = unsafe { SimdAlignedAllocation::alloc(u64_len) };
+        let mut data = unsafe { SimdAlignedAllocation::alloc_zeroed(u64_len) };
         data.copy_from_slice(&self.data[..]);
         Self {
             data,
@@ -29,7 +29,7 @@ impl Clone for Bitmap {
 impl Bitmap {
     pub fn new(len: usize) -> Self {
         let u64_len = (len + 4095) / 64;
-        let data = unsafe { SimdAlignedAllocation::alloc(u64_len) };
+        let data = unsafe { SimdAlignedAllocation::alloc_zeroed(u64_len) };
         Self { data, len }
     }
 
@@ -75,7 +75,7 @@ impl Bitmap {
         debug_assert!(index < self.len);
         let elt = &mut self.data[index / 64];
         let result = Self::check_elt(*elt, index % 64);
-        *elt |= 1 << (index % 8);
+        *elt |= 1 << (index % 64);
 
         result
     }
@@ -224,5 +224,56 @@ mod tests {
         for i in 0..LEN {
             assert_ne!(bitmap.check(i), original.check(i));
         }
+    }
+
+    #[test]
+    fn bitmap_check_set() {
+        const LEN: usize = 64;
+        let mut bitmap = Bitmap::new(LEN);
+        let mut to_set = [42, 45, 12, 19, 8];
+        for i in to_set {
+            assert!(!bitmap.check_set(i as usize));
+        }
+        eprintln!("{:?}", &bitmap.data[..]);
+        for i in to_set {
+            assert!(bitmap.check(i as usize));
+        }
+    }
+
+    #[test]
+    fn bitmap_check_set_duplicates() {
+        const LEN: usize = 64;
+        let mut bitmap = Bitmap::new(LEN);
+        assert!(!bitmap.check_set(42));
+        assert!(bitmap.check_set(42));
+        assert!(bitmap.check(42));
+    }
+
+    #[test]
+    fn bitmap_check_set_from_ids() {
+        const LEN: usize = 12345000;
+        let mut bitmap = Bitmap::new(LEN);
+        let mut to_set = [42, 45, 42, 19, 8];
+        bitmap.check_set_from_ids(&mut to_set[..]);
+
+        eprintln!("{to_set:?}");
+        assert_eq!([42, 45, 4294967295, 19, 8], to_set);
+        for &i in to_set.iter() {
+            if i == u32::MAX {
+                continue;
+            }
+            assert!(bitmap.check(i as usize));
+        }
+    }
+
+    #[test]
+    fn bitmap_par_iterator() {
+        const LEN: usize = 16;
+        let mut bitmap = Bitmap::new(LEN);
+        let mut to_set = [8, 3, 8, 5, 12, 9];
+        bitmap.set_from_ids(&to_set);
+        bitmap.invert();
+        let result: Vec<_> = bitmap.par_iter_ids().collect();
+        assert_eq!(vec![0, 1, 2, 4, 6, 7, 10, 11, 13, 14, 15], result);
     }
 }

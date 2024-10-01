@@ -10,14 +10,14 @@ use crate::util::SimdAlignedAllocation;
 /// The upshot is that you might get outdated values, but reading can
 /// be done quickly, without any synchronization overhead.
 pub struct Bitmap {
-    data: SimdAlignedAllocation,
+    data: SimdAlignedAllocation<u64>,
     len: usize,
 }
 
 impl Clone for Bitmap {
     fn clone(&self) -> Self {
-        let byte_len = (self.len + 4095) / 8;
-        let mut data = unsafe { SimdAlignedAllocation::alloc(byte_len) };
+        let u64_len = (self.len + 4095) / 64;
+        let mut data = unsafe { SimdAlignedAllocation::alloc(u64_len) };
         data.copy_from_slice(&self.data[..]);
         Self {
             data,
@@ -28,21 +28,21 @@ impl Clone for Bitmap {
 
 impl Bitmap {
     pub fn new(len: usize) -> Self {
-        let byte_len = (len + 4095) / 8;
-        let data = unsafe { SimdAlignedAllocation::alloc(byte_len) };
+        let u64_len = (len + 4095) / 64;
+        let data = unsafe { SimdAlignedAllocation::alloc(u64_len) };
         Self { data, len }
     }
 
     #[inline(always)]
-    fn check_elt(elt: u8, index: usize) -> bool {
-        elt & (1 << (index % 8)) != 0
+    fn check_elt(elt: u64, index: usize) -> bool {
+        elt & (1 << (index % 64)) != 0
     }
 
     #[inline(always)]
     pub fn check(&self, index: usize) -> bool {
         debug_assert!(index < self.len);
-        let elt = self.data[index / 8];
-        Self::check_elt(elt, index % 8)
+        let elt = self.data[index / 64];
+        Self::check_elt(elt, index % 64)
     }
 
     #[inline(always)]
@@ -51,8 +51,8 @@ impl Bitmap {
             return;
         }
         debug_assert!(index < self.len);
-        let elt = &mut self.data[index / 8];
-        *elt |= 1 << (index % 8);
+        let elt = &mut self.data[index / 64];
+        *elt |= 1 << (index % 64);
 
         /*
         unsafe {
@@ -73,8 +73,8 @@ impl Bitmap {
             return true;
         }
         debug_assert!(index < self.len);
-        let elt = &mut self.data[index / 8];
-        let result = Self::check_elt(*elt, index % 8);
+        let elt = &mut self.data[index / 64];
+        let result = Self::check_elt(*elt, index % 64);
         *elt |= 1 << (index % 8);
 
         result

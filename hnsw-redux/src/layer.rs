@@ -1,6 +1,6 @@
 use std::{
     ops::{Index, IndexMut},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use itertools::Itertools;
@@ -9,8 +9,10 @@ use rayon::prelude::*;
 use crate::{
     bitmap::Bitmap,
     memoize::{index_to_offset, triangle_lookup_length},
+    optimize::LayerOptimizer,
     params::SearchParams,
     ring_queue::{ring_double_insert, OrderedRingQueue},
+    util::SimdAlignedAllocation,
     vecmath::PRIMES,
     vectors::Vector,
 };
@@ -34,7 +36,7 @@ impl Ord for OrderedFloat {
 
 #[derive(Clone)]
 pub struct Layer {
-    neighborhoods: Vec<u32>,
+    neighborhoods: SimdAlignedAllocation<u32>,
     single_neighborhood_size: usize,
 }
 
@@ -108,7 +110,7 @@ pub trait VectorSearcher: Sync {
 }
 
 impl Layer {
-    pub fn new(neighborhoods: Vec<u32>, single_neighborhood_size: usize) -> Self {
+    pub fn new(neighborhoods: SimdAlignedAllocation<u32>, single_neighborhood_size: usize) -> Self {
         assert_eq!(0, neighborhoods.len() % single_neighborhood_size);
         Self {
             neighborhoods,
@@ -122,24 +124,14 @@ impl Layer {
         self.single_neighborhood_size
     }
 
-    pub fn from_data(mut data: Vec<u8>, single_neighborhood_size: usize) -> Self {
-        data.shrink_to_fit();
-        assert_eq!(data.len() - data.capacity(), 0);
+    pub fn from_data(data: SimdAlignedAllocation<u8>, single_neighborhood_size: usize) -> Self {
         assert_eq!(
             0,
-            data.len() % (4 * single_neighborhood_size),
+            data.len() % (std::mem::size_of::<u32>() * single_neighborhood_size),
             "data is not a multiple of neighborhood size"
         );
-        let neighborhoods = unsafe {
-            Vec::from_raw_parts(
-                data.as_mut_ptr() as *mut u32,
-                data.len() / std::mem::size_of::<u32>(),
-                0,
-            )
-        };
-        std::mem::forget(data);
 
-        Self::new(neighborhoods, single_neighborhood_size)
+        Self::new(data.cast_to(), single_neighborhood_size)
     }
 
     pub fn data(&self) -> &[u8] {
@@ -151,13 +143,13 @@ impl Layer {
         }
     }
 
-    pub fn neighborhood_distances<C: VectorComparator>(&self, comparator: &C) -> Vec<f32> {
+    pub fn neighborhood_distances<C: VectorComparator>(
+        &self,
+        comparator: &C,
+    ) -> SimdAlignedAllocation<f32> {
         let len = self.number_of_neighborhoods() * self.single_neighborhood_size;
-        let mut distances: Vec<f32> = Vec::with_capacity(len);
-        #[allow(clippy::uninit_vec)]
-        unsafe {
-            distances.set_len(len);
-        };
+        let mut distances: SimdAlignedAllocation<f32> =
+            unsafe { SimdAlignedAllocation::alloc(len) };
 
         (0..self.number_of_neighborhoods())
             .into_par_iter()
@@ -435,8 +427,9 @@ impl Layer {
         // we got a cross product, let's use it to construct perfect neighborhoods.
 
         let size = num_vecs * single_neighborhood_size;
-        let mut neighborhoods: Vec<u32> = Vec::with_capacity(size);
-        neighborhoods.spare_capacity_mut()[..size]
+        let mut neighborhoods: SimdAlignedAllocation<u32> =
+            unsafe { SimdAlignedAllocation::alloc(size) };
+        neighborhoods[..size]
             .par_chunks_mut(single_neighborhood_size)
             .enumerate()
             .for_each(|(neighborhood, neighborhood_slice)| {
@@ -452,7 +445,7 @@ impl Layer {
                     .collect();
                 distances_for_vec.sort_unstable_by_key(|(_, x)| OrderedFloat(*x));
                 for i in 0..single_neighborhood_size {
-                    let ptr = unsafe { neighborhood_slice[i].assume_init_mut() };
+                    let ptr = &mut neighborhood_slice[i];
 
                     if i >= distances_for_vec.len() {
                         *ptr = u32::MAX;
@@ -461,9 +454,6 @@ impl Layer {
                     }
                 }
             });
-        unsafe {
-            neighborhoods.set_len(size);
-        }
 
         Self {
             neighborhoods,
@@ -475,15 +465,15 @@ impl Layer {
         num_vecs: usize,
         single_neighborhood_size: usize,
         comparator: &C,
-    ) -> (Self, Vec<f32>) {
+    ) -> (Self, SimdAlignedAllocation<f32>) {
         let size = num_vecs * single_neighborhood_size;
-        let mut neighborhoods: Vec<u32> = Vec::with_capacity(size);
-        neighborhoods.spare_capacity_mut()[..size]
+        let mut neighborhoods: SimdAlignedAllocation<u32> =
+            unsafe { SimdAlignedAllocation::alloc(size) };
+        neighborhoods[..size]
             .par_chunks_mut(single_neighborhood_size)
             .enumerate()
             .for_each(|(idx, neighborhood)| {
                 for (i, n) in neighborhood.iter_mut().enumerate() {
-                    let n = unsafe { n.assume_init_mut() };
                     let new = ((idx + PRIMES[i % PRIMES.len()]) % num_vecs) as u32;
                     // We might have accidentally selected
                     // ourselves, need to shift to another prime
@@ -494,9 +484,6 @@ impl Layer {
                     }
                 }
             });
-        unsafe {
-            neighborhoods.set_len(size);
-        }
 
         let mut result = Self {
             neighborhoods,
@@ -513,11 +500,11 @@ impl Layer {
         single_neighborhood_size: usize,
         grouper: &G,
         comparator: &C,
-    ) -> (Self, Vec<f32>) {
+    ) -> (Self, SimdAlignedAllocation<f32>) {
         let size = num_vecs * single_neighborhood_size;
-        let mut neighborhoods: Vec<u32> = Vec::with_capacity(size);
-        let neighborhoods_iter =
-            neighborhoods.spare_capacity_mut()[..size].par_chunks_mut(single_neighborhood_size);
+        let mut neighborhoods: SimdAlignedAllocation<u32> =
+            unsafe { SimdAlignedAllocation::alloc(size) };
+        let neighborhoods_iter = neighborhoods[..size].par_chunks_mut(single_neighborhood_size);
         let mut grouped_vecs: Vec<_> = (0..num_vecs as u32)
             .into_par_iter()
             .zip(neighborhoods_iter)
@@ -548,7 +535,6 @@ impl Layer {
             })
             .for_each(|(idx, neighborhood, vec_ids)| {
                 for (i, n) in neighborhood.iter_mut().enumerate() {
-                    let n = unsafe { n.assume_init_mut() };
                     let new = (idx + PRIMES[i % PRIMES.len()]) % vec_ids.len();
                     // We might have accidentally selected
                     // ourselves, need to shift to another prime
@@ -560,10 +546,6 @@ impl Layer {
                 }
             });
 
-        unsafe {
-            neighborhoods.set_len(size);
-        }
-
         let mut result = Self {
             neighborhoods,
             single_neighborhood_size,
@@ -574,7 +556,10 @@ impl Layer {
         (result, distances)
     }
 
-    fn sort_neighborhoods<C: VectorComparator>(&mut self, comparator: &C) -> Vec<f32> {
+    fn sort_neighborhoods<C: VectorComparator>(
+        &mut self,
+        comparator: &C,
+    ) -> SimdAlignedAllocation<f32> {
         let memoized_distances = self.neighborhood_distances(comparator);
         self.neighborhoods
             .par_chunks_mut(self.single_neighborhood_size)
@@ -594,75 +579,15 @@ impl Layer {
         memoized_distances
     }
 
-    fn neighbors_as_queues<'a>(
+    pub fn get_optimizer<'a>(
         &'a mut self,
-        memoized_distances: &'a mut [f32],
-    ) -> Vec<RwLock<OrderedRingQueue<'a>>> {
-        self.neighborhoods
-            .par_chunks_mut(self.single_neighborhood_size)
-            .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
-            .map(|(ids_slice, distance_slice)| {
-                RwLock::new(OrderedRingQueue::new_with_mut_slices(
-                    ids_slice,
-                    distance_slice,
-                ))
-            })
-            .collect()
-    }
-
-    pub fn symmetrize(&mut self, memoized_distances: &mut [f32]) {
-        eprintln!("symmetrize: finding neighbor candidates");
-        // create read-write locked ring queues
-        let neighbor_candidates = self.neighbors_as_queues(memoized_distances);
-
-        eprintln!("symmetrize: symmetrize neighborhoods");
-        // symmetrize neighborhoods
-        (0..neighbor_candidates.len())
-            .into_par_iter()
-            .for_each(|i| {
-                for (neighbor, distance) in neighbor_candidates[i]
-                    .read()
-                    .unwrap()
-                    .iter()
-                    .filter(|(n, _)| *n != u32::MAX)
-                {
-                    //eprintln!("inserting into: {}", neighbor.0);
-                    neighbor_candidates[neighbor as usize]
-                        .write()
-                        .unwrap()
-                        .insert((i as u32, distance));
-                }
-            });
-    }
-
-    pub fn improve_neighbors<S: VectorSearcher>(
-        &mut self,
-        memoized_distances: &mut [f32],
-        searcher: &S,
-    ) {
-        eprintln!("improve neighbors: finding neighbor candidates");
-        // create read-write locked ring queues
-        let neighbor_candidates: Vec<RwLock<OrderedRingQueue<'_>>> =
-            self.neighbors_as_queues(memoized_distances);
-
-        eprintln!("improve neighbors: optimizing neighborhoods");
-        // optimize neighborhoods
-        (0..neighbor_candidates.len() as u32)
-            .into_par_iter()
-            .for_each(|i| {
-                let results = searcher.search(i);
-                for (id, priority) in results.iter() {
-                    let new_pair = (i, priority);
-                    if i == id {
-                        continue;
-                    }
-                    //eprintln!("inserting into: {}", neighbor.0);
-                    neighbor_candidates[id as usize]
-                        .write()
-                        .unwrap()
-                        .insert(new_pair);
-                }
-            });
+        distances: &'a mut SimdAlignedAllocation<f32>,
+    ) -> LayerOptimizer<'a> {
+        LayerOptimizer::new(
+            &mut self.neighborhoods,
+            distances,
+            self.single_neighborhood_size,
+        )
     }
 
     pub fn knn<'a, C: VectorComparator>(

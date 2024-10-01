@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File, OpenOptions},
-    io::{self, Write},
+    io::{self, Read, Write},
     os::{
         fd::AsRawFd,
         unix::fs::{FileExt, MetadataExt},
@@ -121,9 +121,17 @@ impl Layer {
         let directory = directory.as_ref();
         let metadata: LayerMetadata =
             serde_json::from_reader(File::open(Self::meta_path(directory, layer_index))?)?;
-        let data = fs::read(Self::neighbors_path(directory, layer_index))?;
+        let mut data_file = File::open(Self::neighbors_path(directory, layer_index))?;
+        let data_size = data_file.metadata()?.size();
+        let mut data: SimdAlignedAllocation<u8> =
+            unsafe { SimdAlignedAllocation::alloc(data_size as usize) };
 
-        Ok(Layer::from_data(data, metadata.single_neighborhood_size))
+        data_file.read_exact(&mut data[..])?;
+
+        Ok(Layer::from_data(
+            data.cast_to(),
+            metadata.single_neighborhood_size,
+        ))
     }
 }
 

@@ -114,8 +114,10 @@ impl Hnsw {
             let (mut new_layer, mut memoized_distances) =
                 Layer::build_grouped(vec_count, single_neighborhood_size, &grouper, comparator);
             // we are going to push the buffer in a second, so +1
+            let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
             eprintln!("symmetrizing layer {}", layers.len() + 1);
-            new_layer.symmetrize(&mut memoized_distances);
+            optimizer.symmetrize();
+            std::mem::drop(optimizer);
             layers.push(new_layer.clone());
             let grouper = SearchGrouper {
                 comparator,
@@ -123,7 +125,8 @@ impl Hnsw {
                 sp: &bp.optimize_sp,
             };
             eprintln!("improving layer {}", layers.len());
-            new_layer.improve_neighbors(&mut memoized_distances, &grouper);
+            let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
+            optimizer.improve_neighbors(&grouper);
             *layers.last_mut().unwrap() = new_layer;
             let temporary_hnsw = Hnsw::new(layers);
 
@@ -181,8 +184,9 @@ impl Hnsw {
             };
 
             let mut distances = bottom[0].neighborhood_distances(comparator);
+            let mut optimizer = bottom[0].get_optimizer(&mut distances);
 
-            bottom[0].improve_neighbors(&mut distances, &searcher);
+            optimizer.improve_neighbors(&searcher);
         }
     }
 

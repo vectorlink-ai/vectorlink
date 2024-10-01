@@ -508,11 +508,10 @@ impl Layer {
         (result, distances)
     }
 
-    pub fn build_grouped<G: VectorGrouper, C: VectorComparator>(
+    pub fn build_grouped<G: VectorGrouper>(
         num_vecs: usize,
         single_neighborhood_size: usize,
         grouper: &G,
-        comparator: &C,
     ) -> Self {
         let size = num_vecs * single_neighborhood_size;
         let mut neighborhoods: SimdAlignedAllocation<u32> =
@@ -559,14 +558,10 @@ impl Layer {
                 }
             });
 
-        let mut result = Self {
+        Self {
             neighborhoods,
             single_neighborhood_size,
-        };
-
-        //let distances = result.sort_neighborhoods(comparator);
-
-        result
+        }
     }
 
     pub fn sort_neighborhoods<C: VectorComparator>(

@@ -106,8 +106,6 @@ impl Hnsw {
         eprintln!("perfect first layer built");
         let mut layers = vec![zero_layer];
 
-        let mut search_vector_ids = Vec::new();
-        let mut result_vector_ids = Vec::new();
         while num_vecs > layer_nodes {
             layer_nodes *= bp.order;
             eprintln!("layer nodes: {layer_nodes}");
@@ -125,8 +123,7 @@ impl Hnsw {
                 layers: &layers,
                 sp: &bp.optimize_sp,
             };
-            let mut new_layer =
-                Layer::build_grouped(vec_count, single_neighborhood_size, &grouper, comparator);
+            let mut new_layer = Layer::build_grouped(vec_count, single_neighborhood_size, &grouper);
 
             let mut memoized_distances = new_layer.sort_neighborhoods(comparator);
 
@@ -136,26 +133,7 @@ impl Hnsw {
                 eprintln!("symmetrizing layer {}", layers.len() + 1);
                 optimizer.symmetrize();
             }
-            layers.push(new_layer);
-            Hnsw::with_temp_hnsw(&mut layers, |hnsw| {
-                let proportion = 1.0;
-                let recall =
-                    hnsw.test_recall(proportion, &SearchParams::default(), comparator, 0x533D);
-                eprintln!("recall after symmetrize: {recall}");
-            });
-            new_layer = layers.pop().unwrap();
-            search_vector_ids.clear();
-            search_vector_ids.extend(0..layers.last().unwrap().number_of_neighborhoods() as u32);
-            new_layer.par_find_unconnected_neighbors(
-                1,
-                &mut search_vector_ids,
-                &mut result_vector_ids,
-            );
-            eprintln!(
-                "found {} unconnected nodes (out of {})",
-                result_vector_ids.len(),
-                new_layer.number_of_neighborhoods()
-            );
+
             layers.push(new_layer.clone());
             let grouper = SearchGrouper {
                 comparator,
@@ -163,22 +141,28 @@ impl Hnsw {
                 sp: &bp.optimize_sp,
             };
             eprintln!("improving layer {}", layers.len());
+            //optimizer.improve_neighbors(&grouper, result_vector_ids.par_iter().copied());
+
             let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
-            optimizer.improve_neighbors(&grouper, result_vector_ids.par_iter().copied());
-            //optimizer.improve_all_neighbors(&grouper);
+            optimizer.improve_all_neighbors(&grouper);
+
+            optimizer.improve_all_neighbors(&grouper);
+
             *layers.last_mut().unwrap() = new_layer;
+
+            /*
             let temporary_hnsw = Hnsw::new(layers);
 
-            let proportion = 1.0;
-            let recall = temporary_hnsw.test_recall(
-                proportion,
-                &SearchParams::default(),
-                comparator,
-                0x533D,
-            );
+                        let proportion = 1.0;
+                        let recall = temporary_hnsw.test_recall(
+                            proportion,
+                            &SearchParams::default(),
+                            comparator,
+                            0x533D,
+                        );
             eprintln!("recall at layer {}: {recall}", temporary_hnsw.layer_count());
-
             layers = temporary_hnsw.into_inner();
+            */
         }
         Hnsw::new(layers)
     }

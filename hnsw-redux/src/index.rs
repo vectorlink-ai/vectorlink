@@ -236,13 +236,34 @@ mod tests {
         let vector_stream = vecs.iter();
         let centroid_count = u16::MAX as usize;
         let centroid_byte_size = 8 * std::mem::size_of::<f32>();
-        let mut centroid_build_params = BuildParams::default();
-        centroid_build_params.optimize_sp.parallel_visit_count = 12;
-        centroid_build_params.optimize_sp.circulant_parameter_count = 8;
-        let mut quantized_build_params = BuildParams::default();
-        quantized_build_params.optimize_sp.parallel_visit_count = 12;
-        quantized_build_params.optimize_sp.circulant_parameter_count = 8;
-        let quantizer_search_params = SearchParams::default();
+        let centroid_build_params = BuildParams {
+            order: 24,
+            neighborhood_size: 24,
+            bottom_neighborhood_size: 48,
+            optimize_sp: SearchParams {
+                parallel_visit_count: 12,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+        };
+        let quantized_build_params = BuildParams {
+            order: 24,
+            neighborhood_size: 24,
+            bottom_neighborhood_size: 48,
+            optimize_sp: SearchParams {
+                parallel_visit_count: 12,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+        };
+        let quantized_search_params = SearchParams {
+            parallel_visit_count: 12,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 8,
+        };
 
         let pq = create_pq::<
             NewEuclideanDistance8x8,
@@ -257,7 +278,7 @@ mod tests {
             centroid_byte_size,
             &centroid_build_params,
             &quantized_build_params,
-            quantizer_search_params,
+            quantized_search_params,
             0x533D,
         );
 
@@ -266,9 +287,12 @@ mod tests {
             vectors: vecs,
             name: "dummy".to_string(),
         };
-        let mut sp = SearchParams::default();
-        sp.parallel_visit_count = 12;
-        sp.circulant_parameter_count = 8;
+        let sp = SearchParams {
+            parallel_visit_count: 12,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 8,
+        };
 
         let recall = index.test_recall_with_proportion(0.10, &sp, 0x533D);
         eprintln!("recall: {recall}");
@@ -280,11 +304,25 @@ mod tests {
         let number_of_vecs = 1_000;
         let vecs = random_vectors_normalized::<1024>(number_of_vecs, 0x533D);
         let comparator = CosineDistance1024::new(&vecs);
-        let bp = BuildParams::default();
+        let bp = BuildParams {
+            order: 24,
+            neighborhood_size: 24,
+            bottom_neighborhood_size: 48,
+            optimize_sp: SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 0,
+            },
+        };
+        let sp = SearchParams {
+            parallel_visit_count: 12,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 8,
+        };
+
         let hnsw = Hnsw::generate(&bp, &comparator);
-        let mut sp = SearchParams::default();
-        sp.circulant_parameter_count = 8;
-        sp.parallel_visit_count = 12;
 
         let mut index = Hnsw1024 {
             hnsw,

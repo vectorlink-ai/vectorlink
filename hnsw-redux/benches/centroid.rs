@@ -14,7 +14,17 @@ fn bench_centroid_construction(b: &mut Bencher) {
     let number_of_vecs = u16::MAX as usize;
     let vecs = random_vectors(number_of_vecs, 8, 0x533D);
     let comparator = EuclideanDistance8x8::new(&vecs);
-    let bp = BuildParams::default();
+    let bp = BuildParams {
+        order: 24,
+        neighborhood_size: 24,
+        bottom_neighborhood_size: 48,
+        optimize_sp: SearchParams {
+            parallel_visit_count: 1,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 0,
+        },
+    };
 
     b.iter(|| {
         let _ = Hnsw::generate(&bp, &comparator);
@@ -26,7 +36,17 @@ fn bench_symmetrize(b: &mut Bencher) {
     let number_of_vecs = u16::MAX as usize;
     let vecs = random_vectors(number_of_vecs, 8, 0x533D);
     let comparator = EuclideanDistance8x8::new(&vecs);
-    let bp = BuildParams::default();
+    let bp = BuildParams {
+        order: 24,
+        neighborhood_size: 24,
+        bottom_neighborhood_size: 48,
+        optimize_sp: SearchParams {
+            parallel_visit_count: 1,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 0,
+        },
+    };
     let mut hnsw = Hnsw::generate(&bp, &comparator);
     let layer = hnsw.get_layer_mut(hnsw.layer_count() - 1);
     let mut distances = layer.neighborhood_distances(&comparator);
@@ -40,9 +60,24 @@ fn bench_improve(b: &mut Bencher) {
     let number_of_vecs = u16::MAX as usize;
     let vecs = random_vectors(number_of_vecs, 8, 0x533D);
     let comparator = EuclideanDistance8x8::new(&vecs);
-    let bp = BuildParams::default();
+    let bp = BuildParams {
+        order: 24,
+        neighborhood_size: 24,
+        bottom_neighborhood_size: 48,
+        optimize_sp: SearchParams {
+            parallel_visit_count: 1,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 0,
+        },
+    };
     let mut hnsw = Hnsw::generate(&bp, &comparator);
-    let sp = SearchParams::default();
+    let sp = SearchParams {
+        parallel_visit_count: 12,
+        visit_queue_len: 100,
+        search_queue_len: 30,
+        circulant_parameter_count: 8,
+    };
     b.iter(|| hnsw.improve_neighbors_in_all_layers(&sp, &comparator));
 }
 
@@ -51,9 +86,26 @@ fn bench_centroid_search(b: &mut Bencher) {
     let number_of_vecs = u16::MAX as usize;
     let vecs = random_vectors(number_of_vecs, 8, 0x533D);
     let comparator = EuclideanDistance8x8::new(&vecs);
-    let bp = BuildParams::default();
+    let bp = BuildParams {
+        order: 24,
+        neighborhood_size: 24,
+        bottom_neighborhood_size: 48,
+        optimize_sp: SearchParams {
+            parallel_visit_count: 1,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 0,
+        },
+    };
+
     let hnsw = Hnsw::generate(&bp, &comparator);
-    let sp = SearchParams::default();
+    let sp = SearchParams {
+        parallel_visit_count: 12,
+        visit_queue_len: 100,
+        search_queue_len: 30,
+        circulant_parameter_count: 8,
+    };
+
     let vec = &random_vectors(1, 8, 0x12345)[0];
     b.iter(|| hnsw.search_from_initial(Vector::Slice(vec), &sp, &comparator));
 }

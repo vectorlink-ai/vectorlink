@@ -336,7 +336,12 @@ mod tests {
         let comparator = EuclideanDistance8x8::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);
-        let sp = SearchParams::default();
+        let sp = SearchParams {
+            parallel_visit_count: 12,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 8,
+        };
 
         for i in 0..10 {
             let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
@@ -357,7 +362,12 @@ mod tests {
         let comparator = CosineDistance1024::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);
-        let sp = SearchParams::default();
+        let sp = SearchParams {
+            parallel_visit_count: 12,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 8,
+        };
 
         for i in 0..10 {
             let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
@@ -379,9 +389,12 @@ mod tests {
         let comparator = CosineDistance1536::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);
-        let mut sp = SearchParams::default();
-        sp.circulant_parameter_count = 8;
-        sp.parallel_visit_count = 12;
+        let sp = SearchParams {
+            parallel_visit_count: 12,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 8,
+        };
 
         for i in 0..10 {
             let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);

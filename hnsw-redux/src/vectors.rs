@@ -95,6 +95,21 @@ impl Vectors {
         }
     }
 
+    pub fn get_mut_f32_slice(&mut self, index: usize) -> &mut [f32] {
+        if index == u32::MAX as usize {
+            panic!("wrong index {index}");
+        } else {
+            let offset = self.vector_byte_size * index;
+            debug_assert!(offset + self.vector_byte_size <= self.data.len());
+            unsafe {
+                std::slice::from_raw_parts_mut(
+                    self.data.as_ptr().add(offset) as *mut f32,
+                    self.vector_byte_size / std::mem::size_of::<f32>(),
+                )
+            }
+        }
+    }
+
     pub fn data(&self) -> &[u8] {
         &self.data
     }

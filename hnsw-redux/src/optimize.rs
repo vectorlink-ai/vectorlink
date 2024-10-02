@@ -88,7 +88,7 @@ impl<'a> LayerOptimizer<'a> {
                 }
                 //eprintln!("inserting into: {}", neighbor.0);
                 let mut destination_queue = self.get(found_vector_id);
-                let result = destination_queue.insert(new_pair);
+                let _result = destination_queue.insert(new_pair);
             }
         });
     }

@@ -24,6 +24,7 @@ impl Hnsw {
         self.layers
     }
 
+    #[allow(unused)]
     fn with_temp_hnsw<R, F: Fn(&Hnsw) -> R>(layers: &mut Vec<Layer>, func: F) -> R {
         let mut temp_layers = Vec::new();
         std::mem::swap(&mut temp_layers, layers);
@@ -358,7 +359,7 @@ mod tests {
     #[test]
     fn construct_unquantized_1024_hnsw() {
         let number_of_vecs = 1000;
-        let vecs = random_vectors_normalized::<1024>(number_of_vecs, 0x533D);
+        let vecs = random_vectors_normalized(number_of_vecs, 1024, 0x533D);
         let comparator = CosineDistance1024::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);
@@ -385,7 +386,7 @@ mod tests {
     #[ignore]
     fn construct_unquantized_1536_hnsw() {
         let number_of_vecs = 100_000;
-        let vecs = random_vectors_normalized::<1536>(number_of_vecs, 0x533D);
+        let vecs = random_vectors_normalized(number_of_vecs, 1536, 0x533D);
         let comparator = CosineDistance1536::new(&vecs);
         let bp = BuildParams::default();
         let mut hnsw = Hnsw::generate(&bp, &comparator);

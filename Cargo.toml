@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
+members = [ "generate-random-vectors",
   "hnsw-redux"
 , "index-vectors", "knn", "normalize", "search-collation", "test-recall", "time-load"]
 

@@ -574,7 +574,7 @@ impl Layer {
             .par_chunks_mut(self.single_neighborhood_size)
             .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
             .enumerate()
-            .for_each(|(vector_id, (neighborhood, distances))| {
+            .for_each(|(_vector_id, (neighborhood, distances))| {
                 let mut pairs: Vec<_> = neighborhood
                     .iter()
                     .copied()

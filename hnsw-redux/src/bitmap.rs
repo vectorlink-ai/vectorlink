@@ -17,7 +17,7 @@ pub struct Bitmap {
 impl Clone for Bitmap {
     fn clone(&self) -> Self {
         let u64_len = (self.len + 4095) / 64;
-        let mut data = unsafe { SimdAlignedAllocation::alloc_zeroed(u64_len) };
+        let mut data = SimdAlignedAllocation::alloc_zeroed(u64_len);
         data.copy_from_slice(&self.data[..]);
         Self {
             data,
@@ -29,7 +29,7 @@ impl Clone for Bitmap {
 impl Bitmap {
     pub fn new(len: usize) -> Self {
         let u64_len = (len + 4095) / 64;
-        let data = unsafe { SimdAlignedAllocation::alloc_zeroed(u64_len) };
+        let data = SimdAlignedAllocation::alloc_zeroed(u64_len);
         Self { data, len }
     }
 
@@ -230,7 +230,7 @@ mod tests {
     fn bitmap_check_set() {
         const LEN: usize = 64;
         let mut bitmap = Bitmap::new(LEN);
-        let mut to_set = [42, 45, 12, 19, 8];
+        let to_set = [42, 45, 12, 19, 8];
         for i in to_set {
             assert!(!bitmap.check_set(i as usize));
         }
@@ -270,7 +270,7 @@ mod tests {
     fn bitmap_par_iterator() {
         const LEN: usize = 16;
         let mut bitmap = Bitmap::new(LEN);
-        let mut to_set = [8, 3, 8, 5, 12, 9];
+        let to_set = [8, 3, 8, 5, 12, 9];
         bitmap.set_from_ids(&to_set);
         bitmap.invert();
         let result: Vec<_> = bitmap.par_iter_ids().collect();

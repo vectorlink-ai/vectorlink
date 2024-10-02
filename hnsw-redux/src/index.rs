@@ -302,7 +302,7 @@ mod tests {
     #[test]
     fn write_knn() {
         let number_of_vecs = 1_000;
-        let vecs = random_vectors_normalized::<1024>(number_of_vecs, 0x533D);
+        let vecs = random_vectors_normalized(number_of_vecs, 1024, 0x533D);
         let comparator = CosineDistance1024::new(&vecs);
         let bp = BuildParams {
             order: 24,

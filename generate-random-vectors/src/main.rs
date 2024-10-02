@@ -7,12 +7,12 @@ use hnsw_redux::test_util::random_vectors_normalized;
 struct Command {
     vector_directory: String,
     domain: String,
-    vector_size: usize,
+    num_vecs: usize,
 
+    #[arg(long, default_value_t = 1024)]
+    vector_size: usize,
     #[arg(long, default_value_t = 0x533D)]
     seed: u64,
-    #[arg(long, default_value_t = 1024)]
-    num_vecs: usize,
 }
 fn main() -> io::Result<()> {
     let args = Command::parse();

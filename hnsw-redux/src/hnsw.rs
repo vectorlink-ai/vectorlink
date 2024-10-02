@@ -141,28 +141,10 @@ impl Hnsw {
                 sp: &bp.optimize_sp,
             };
             eprintln!("improving layer {}", layers.len());
-            //optimizer.improve_neighbors(&grouper, result_vector_ids.par_iter().copied());
-
             let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
             optimizer.improve_all_neighbors(&grouper);
 
-            optimizer.improve_all_neighbors(&grouper);
-
             *layers.last_mut().unwrap() = new_layer;
-
-            /*
-            let temporary_hnsw = Hnsw::new(layers);
-
-                        let proportion = 1.0;
-                        let recall = temporary_hnsw.test_recall(
-                            proportion,
-                            &SearchParams::default(),
-                            comparator,
-                            0x533D,
-                        );
-            eprintln!("recall at layer {}: {recall}", temporary_hnsw.layer_count());
-            layers = temporary_hnsw.into_inner();
-            */
         }
         Hnsw::new(layers)
     }

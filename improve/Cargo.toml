@@ -1,0 +1,9 @@
+[package]
+name = "improve"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.18", features = ["derive"] }
+hnsw-redux = { version = "0.1.0", path = "../hnsw-redux" }
+serde_json = "1.0.128"

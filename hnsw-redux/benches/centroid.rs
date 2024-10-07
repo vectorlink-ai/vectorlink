@@ -3,7 +3,7 @@ extern crate test;
 use hnsw_redux::{
     comparator::EuclideanDistance8x8,
     hnsw::Hnsw,
-    params::{BuildParams, SearchParams},
+    params::{BuildParams, OptimizationParams, SearchParams},
     test_util::random_vectors,
     vectors::Vector,
 };
@@ -18,11 +18,15 @@ fn bench_centroid_construction(b: &mut Bencher) {
         order: 24,
         neighborhood_size: 24,
         bottom_neighborhood_size: 48,
-        optimize_sp: SearchParams {
-            parallel_visit_count: 1,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-            circulant_parameter_count: 0,
+        optimization_params: OptimizationParams {
+            search_params: SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+            improvement_threshold: 0.01,
+            recall_target: 1.0,
         },
     };
 
@@ -40,11 +44,15 @@ fn bench_symmetrize(b: &mut Bencher) {
         order: 24,
         neighborhood_size: 24,
         bottom_neighborhood_size: 48,
-        optimize_sp: SearchParams {
-            parallel_visit_count: 1,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-            circulant_parameter_count: 0,
+        optimization_params: OptimizationParams {
+            search_params: SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+            improvement_threshold: 0.01,
+            recall_target: 1.0,
         },
     };
     let mut hnsw = Hnsw::generate(&bp, &comparator);
@@ -64,21 +72,30 @@ fn bench_improve(b: &mut Bencher) {
         order: 24,
         neighborhood_size: 24,
         bottom_neighborhood_size: 48,
-        optimize_sp: SearchParams {
-            parallel_visit_count: 1,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-            circulant_parameter_count: 0,
+        optimization_params: OptimizationParams {
+            search_params: SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+            improvement_threshold: 0.01,
+            recall_target: 1.0,
         },
     };
     let mut hnsw = Hnsw::generate(&bp, &comparator);
-    let sp = SearchParams {
-        parallel_visit_count: 12,
-        visit_queue_len: 100,
-        search_queue_len: 30,
-        circulant_parameter_count: 8,
+    let op = OptimizationParams {
+        search_params: SearchParams {
+            parallel_visit_count: 12,
+            visit_queue_len: 100,
+            search_queue_len: 30,
+            circulant_parameter_count: 8,
+        },
+        improvement_threshold: 0.01,
+        recall_target: 1.0,
     };
-    b.iter(|| hnsw.improve_neighbors_in_all_layers(&sp, &comparator));
+
+    b.iter(|| hnsw.optimize(&op, &comparator));
 }
 
 #[bench]
@@ -90,11 +107,15 @@ fn bench_centroid_search(b: &mut Bencher) {
         order: 24,
         neighborhood_size: 24,
         bottom_neighborhood_size: 48,
-        optimize_sp: SearchParams {
-            parallel_visit_count: 1,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-            circulant_parameter_count: 0,
+        optimization_params: OptimizationParams {
+            search_params: SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+            improvement_threshold: 0.01,
+            recall_target: 1.0,
         },
     };
 

@@ -205,9 +205,8 @@ pub fn create_pq<
     let mut centroid_hnsw = Hnsw::generate(centroid_build_params, &centroid_comparator);
     eprintln!("generated centroid hnsw");
     let recall = centroid_hnsw.optimize(
-        &centroid_build_params.optimize_sp,
+        &centroid_build_params.optimization_params,
         &centroid_comparator,
-        seed,
     );
     eprintln!("optimized centroid hnsw {recall}");
     let quantizer = Quantizer::new(centroid_hnsw, quantizer_search_params);
@@ -221,9 +220,8 @@ pub fn create_pq<
     let mut quantized_hnsw = Hnsw::generate(quantized_build_params, &quantized_comparator);
     eprintln!("generated quantized hnsw");
     let recall = quantized_hnsw.optimize(
-        &quantized_build_params.optimize_sp,
+        &quantized_build_params.optimization_params,
         &quantized_comparator,
-        seed,
     );
     eprintln!("optimized quantized hnsw {recall}");
 

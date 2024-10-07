@@ -1,6 +1,6 @@
 use crate::{
-    layer::{Layer, VectorComparator, VectorGrouper, VectorSearcher},
-    params::{BuildParams, SearchParams},
+    layer::{Layer, VectorComparator, VectorGrouper, VectorRecall, VectorSearcher},
+    params::{BuildParams, OptimizationParams, SearchParams},
     ring_queue::OrderedRingQueue,
     vectors::Vector,
 };
@@ -122,7 +122,7 @@ impl Hnsw {
             let grouper = SearchGrouper {
                 comparator,
                 layers: &layers,
-                sp: &bp.optimize_sp,
+                sp: &bp.optimization_params.search_params,
             };
             let mut new_layer = Layer::build_grouped(vec_count, single_neighborhood_size, &grouper);
 
@@ -139,7 +139,7 @@ impl Hnsw {
             let grouper = SearchGrouper {
                 comparator,
                 layers: &layers,
-                sp: &bp.optimize_sp,
+                sp: &bp.optimization_params.search_params,
             };
             eprintln!("improving layer {}", layers.len());
             let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
@@ -152,62 +152,54 @@ impl Hnsw {
 
     pub fn optimize<C: VectorComparator>(
         &mut self,
-        sp: &SearchParams,
+        op: &OptimizationParams,
         comparator: &C,
-        seed: u64,
     ) -> f32 {
         let mut recall = 0.0;
-        let mut improvement = 1.0;
-        let proportion = 1.0 / (self.num_vectors() as f32).sqrt();
-        while recall < 1.0 && improvement > 0.001 {
-            self.improve_neighbors_in_all_layers(sp, comparator);
-            let new_recall = self.test_recall(proportion, sp, comparator, seed);
-            improvement = new_recall - recall;
-            recall = new_recall
+        for i in 0..self.layers().len() {
+            recall = self.optimize_layer(i, op, comparator);
         }
         recall
     }
 
-    pub fn improve_neighbors_in_all_layers<C: VectorComparator>(
+    pub fn optimize_layer<C: VectorComparator>(
         &mut self,
-        optimize_sp: &SearchParams,
+        layer_i: usize,
+        optimize_params: &OptimizationParams,
         comparator: &C,
-    ) {
-        let mut search_vector_ids = Vec::new();
-        let mut result_vector_ids = Vec::new();
-        for i in 1..self.layers.len() {
-            let (top, bottom) = self.layers.split_at_mut(i);
-            let pseudo_layer = bottom[0].clone();
-            let mut pseudo_layers: Vec<&Layer> = Vec::with_capacity(top.len() + 1);
-            pseudo_layers.extend(top.iter());
-            pseudo_layers.push(&pseudo_layer);
+    ) -> f32 {
+        let (top, bottom) = self.layers.split_at_mut(layer_i);
+        let pseudo_layer = bottom[0].clone();
+        let mut pseudo_layers: Vec<&Layer> = Vec::with_capacity(top.len() + 1);
+        pseudo_layers.extend(top.iter());
+        pseudo_layers.push(&pseudo_layer);
 
-            let searcher = SearchGrouper {
-                comparator,
-                layers: &pseudo_layers,
-                sp: optimize_sp,
-            };
+        let searcher = SearchGrouper {
+            comparator,
+            layers: &pseudo_layers,
+            sp: &optimize_params.search_params,
+        };
 
-            search_vector_ids.clear();
-            search_vector_ids.extend(0..top.last().unwrap().number_of_neighborhoods() as u32);
-            bottom[0].par_find_unconnected_neighbors(
-                1,
-                &mut search_vector_ids,
-                &mut result_vector_ids,
-            );
+        let mut distances = bottom[0].neighborhood_distances(comparator);
+        let mut optimizer = bottom[0].get_optimizer(&mut distances);
 
-            eprintln!(
-                "{i}: found {} unconnected vecs (out of {})",
-                result_vector_ids.len(),
-                bottom[0].number_of_neighborhoods()
-            );
+        let mut recall = 0.0;
+        let mut improvement = 1.0;
+        let mut round = 0;
+        let vector_count = pseudo_layer.number_of_neighborhoods();
+        let proportion = 1.0 / (vector_count as f32).sqrt();
+        while recall < optimize_params.recall_target
+            && improvement > optimize_params.improvement_threshold
+        {
+            optimizer.improve_all_neighbors(&searcher);
 
-            let mut distances = bottom[0].neighborhood_distances(comparator);
-            let mut optimizer = bottom[0].get_optimizer(&mut distances);
-
-            optimizer.improve_neighbors(&searcher, result_vector_ids.par_iter().copied());
-            //optimizer.improve_all_neighbors(&searcher);
+            let new_recall = searcher.test_recall(proportion, 0x533D + layer_i as u64 + round);
+            improvement = new_recall - recall;
+            recall = new_recall;
+            eprintln!("layer[{layer_i}]\n  Recall: {recall}\n  Improvement: {improvement}");
+            round += 1;
         }
+        recall
     }
 
     pub fn num_vectors(&self) -> usize {
@@ -292,6 +284,40 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorSearcher for SearchG
     }
 }
 
+impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorRecall for SearchGrouper<'a, C, L> {
+    fn test_recall(&self, proportion: f32, seed: u64) -> f32 {
+        eprintln!("proportion: {proportion}");
+        let mut rng = StdRng::seed_from_u64(seed);
+        let num_vectors: u32 = self
+            .layers
+            .last()
+            .unwrap()
+            .as_ref()
+            .number_of_neighborhoods() as u32;
+        let ids: Vec<u32> = if proportion == 1.0 {
+            (0..num_vectors).collect()
+        } else {
+            (0..num_vectors).choose_multiple(&mut rng, (proportion * num_vectors as f32) as usize)
+        };
+        let total = ids.len();
+        eprintln!("searching for {total} vecs..");
+        let found: f32 = ids
+            .into_par_iter()
+            .map(|i| {
+                let result = self.search(i);
+                let vi = result.first();
+                if vi.0 == i {
+                    1.0_f32
+                } else {
+                    0.0_f32
+                }
+            })
+            .sum();
+        eprintln!("found {found}.");
+        found / total as f32
+    }
+}
+
 impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGrouper<'a, C, L> {
     fn vector_group(&self, vec: u32) -> usize {
         let sp = SearchParams {
@@ -350,7 +376,7 @@ mod tests {
             if recall == 1.0 {
                 break;
             }
-            hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);
+            hnsw.optimize(&Default::default(), &comparator);
         }
         let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
         assert_eq!(recall, 1.0);
@@ -376,7 +402,7 @@ mod tests {
             if recall == 1.0 {
                 break;
             }
-            hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);
+            hnsw.optimize(&Default::default(), &comparator);
         }
         let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
         assert_eq!(recall, 1.0);
@@ -403,7 +429,7 @@ mod tests {
             if recall == 1.0 {
                 break;
             }
-            hnsw.improve_neighbors_in_all_layers(&Default::default(), &comparator);
+            hnsw.optimize(&Default::default(), &comparator);
         }
         let recall = hnsw.test_recall(1.0, &sp, &comparator, 0x533D);
         assert!(recall > 0.999);

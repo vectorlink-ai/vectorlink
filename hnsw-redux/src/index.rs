@@ -1,9 +1,11 @@
 use enum_dispatch::enum_dispatch;
 use rayon::iter::ParallelIterator;
 use std::fs::OpenOptions;
+use std::io;
 use std::os::unix::prelude::FileExt;
 use std::{fs::File, path::Path};
 
+use crate::params::OptimizationParams;
 use crate::{
     comparator::{
         CosineDistance1024, EuclideanDistance8x8, NewMemoizedComparator128,
@@ -25,8 +27,12 @@ pub trait Index {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue;
     fn num_vectors(&self) -> usize;
     fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
-    fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32;
-    fn improve_neighbors_in_all_layers(&mut self, sp: &SearchParams);
+    fn optimize_and_save<P: AsRef<Path>>(
+        &mut self,
+        root: P,
+        op: &OptimizationParams,
+    ) -> Result<f32, io::Error>;
+    fn optimize(&mut self, op: &OptimizationParams) -> f32;
     fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P);
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
@@ -99,19 +105,42 @@ impl Index for Pq1024x8 {
             .test_recall(proportion, sp, &quantized_comparator, seed)
     }
 
-    fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32 {
+    fn optimize(&mut self, op: &OptimizationParams) -> f32 {
         let quantized_comparator =
             NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
-        let quantized_hnsw = &mut self.pq.quantized_hnsw;
-        quantized_hnsw.optimize(sp, &quantized_comparator, seed)
+        let mut recall = 0.0;
+        for i in 0..self.pq.quantized_hnsw.layers().len() {
+            let layer_recall = self
+                .pq
+                .quantized_hnsw
+                .optimize_layer(i, op, &quantized_comparator);
+            recall = layer_recall;
+            eprintln!("saving layer [{i}] with recall {recall}");
+            //self.store_hnsw(&root)?;
+            todo!("No serialization possible yet");
+        }
+        recall
     }
 
-    fn improve_neighbors_in_all_layers(&mut self, sp: &SearchParams) {
+    fn optimize_and_save<P: AsRef<Path>>(
+        &mut self,
+        _root: P,
+        op: &OptimizationParams,
+    ) -> Result<f32, io::Error> {
         let quantized_comparator =
             NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
-        self.pq
-            .quantized_hnsw
-            .improve_neighbors_in_all_layers(sp, &quantized_comparator)
+        let mut recall = 0.0;
+        for i in 0..self.pq.quantized_hnsw.layers().len() {
+            let layer_recall = self
+                .pq
+                .quantized_hnsw
+                .optimize_layer(i, op, &quantized_comparator);
+            recall = layer_recall;
+            eprintln!("saving layer [{i}] with recall {recall}");
+            //self.store_hnsw(&root)?;
+            todo!("No serialization possible yet");
+        }
+        Ok(recall)
     }
 
     fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
@@ -176,16 +205,23 @@ impl Index for Hnsw1024 {
         hnsw.test_recall(proportion, sp, &comparator, seed)
     }
 
-    fn optimize(&mut self, sp: &SearchParams, seed: u64) -> f32 {
-        let Hnsw1024 { hnsw, vectors, .. } = self;
-        let comparator = CosineDistance1024::new(vectors);
-        hnsw.optimize(sp, &comparator, seed)
+    fn optimize_and_save<P: AsRef<Path>>(
+        &mut self,
+        root: P,
+        op: &OptimizationParams,
+    ) -> Result<f32, io::Error> {
+        let comparator = CosineDistance1024::new(&self.vectors);
+        let mut recall = 0.0;
+        for i in 0..self.hnsw.layers().len() {
+            recall = self.hnsw.optimize_layer(i, op, &comparator);
+            self.store_hnsw(&root)?;
+        }
+        Ok(recall)
     }
 
-    fn improve_neighbors_in_all_layers(&mut self, sp: &SearchParams) {
-        let Hnsw1024 { hnsw, vectors, .. } = self;
-        let comparator = CosineDistance1024::new(vectors);
-        hnsw.improve_neighbors_in_all_layers(sp, &comparator)
+    fn optimize(&mut self, op: &OptimizationParams) -> f32 {
+        let comparator = CosineDistance1024::new(&self.vectors);
+        self.hnsw.optimize(op, &comparator)
     }
 
     fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
@@ -240,22 +276,30 @@ mod tests {
             order: 24,
             neighborhood_size: 24,
             bottom_neighborhood_size: 48,
-            optimize_sp: SearchParams {
-                parallel_visit_count: 12,
-                visit_queue_len: 100,
-                search_queue_len: 30,
-                circulant_parameter_count: 8,
+            optimization_params: OptimizationParams {
+                search_params: SearchParams {
+                    parallel_visit_count: 12,
+                    visit_queue_len: 100,
+                    search_queue_len: 30,
+                    circulant_parameter_count: 8,
+                },
+                improvement_threshold: 0.01,
+                recall_target: 1.0,
             },
         };
         let quantized_build_params = BuildParams {
             order: 24,
             neighborhood_size: 24,
             bottom_neighborhood_size: 48,
-            optimize_sp: SearchParams {
-                parallel_visit_count: 12,
-                visit_queue_len: 100,
-                search_queue_len: 30,
-                circulant_parameter_count: 8,
+            optimization_params: OptimizationParams {
+                search_params: SearchParams {
+                    parallel_visit_count: 12,
+                    visit_queue_len: 100,
+                    search_queue_len: 30,
+                    circulant_parameter_count: 8,
+                },
+                improvement_threshold: 0.01,
+                recall_target: 1.0,
             },
         };
         let quantized_search_params = SearchParams {
@@ -308,11 +352,15 @@ mod tests {
             order: 24,
             neighborhood_size: 24,
             bottom_neighborhood_size: 48,
-            optimize_sp: SearchParams {
-                parallel_visit_count: 1,
-                visit_queue_len: 100,
-                search_queue_len: 30,
-                circulant_parameter_count: 0,
+            optimization_params: OptimizationParams {
+                search_params: SearchParams {
+                    parallel_visit_count: 1,
+                    visit_queue_len: 100,
+                    search_queue_len: 30,
+                    circulant_parameter_count: 8,
+                },
+                improvement_threshold: 0.01,
+                recall_target: 1.0,
             },
         };
         let sp = SearchParams {
@@ -333,7 +381,7 @@ mod tests {
         let mut last_recall = 0.0;
         let mut improvement = 1.0;
         while recall < 1.0 && improvement > 0.1 {
-            index.improve_neighbors_in_all_layers(&Default::default());
+            index.optimize(&Default::default());
             recall = index.test_recall(&sp, 0x533D);
             eprintln!("recall: {recall}");
             improvement = recall - last_recall;

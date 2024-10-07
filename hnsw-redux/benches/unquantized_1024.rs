@@ -3,7 +3,7 @@ extern crate test;
 use hnsw_redux::{
     comparator::CosineDistance1024,
     hnsw::Hnsw,
-    params::{BuildParams, SearchParams},
+    params::{BuildParams, OptimizationParams, SearchParams},
     test_util::random_vectors,
     vectors::Vector,
 };
@@ -18,11 +18,15 @@ fn bench_unquantized_1024_construction(b: &mut Bencher) {
         order: 24,
         neighborhood_size: 24,
         bottom_neighborhood_size: 48,
-        optimize_sp: SearchParams {
-            parallel_visit_count: 1,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-            circulant_parameter_count: 0,
+        optimization_params: OptimizationParams {
+            search_params: SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+            improvement_threshold: 0.01,
+            recall_target: 1.0,
         },
     };
 
@@ -40,11 +44,15 @@ fn bench_unquantized_1024_search(b: &mut Bencher) {
         order: 24,
         neighborhood_size: 24,
         bottom_neighborhood_size: 48,
-        optimize_sp: SearchParams {
-            parallel_visit_count: 1,
-            visit_queue_len: 100,
-            search_queue_len: 30,
-            circulant_parameter_count: 0,
+        optimization_params: OptimizationParams {
+            search_params: SearchParams {
+                parallel_visit_count: 1,
+                visit_queue_len: 100,
+                search_queue_len: 30,
+                circulant_parameter_count: 8,
+            },
+            improvement_threshold: 0.01,
+            recall_target: 1.0,
         },
     };
 

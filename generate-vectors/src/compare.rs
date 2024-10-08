@@ -47,6 +47,10 @@ pub struct CompareCommand {
     /// Path to output csv
     #[arg(short, long)]
     output_file: String,
+
+    /// Path to output csv
+    #[arg(short, long)]
+    weights: String,
 }
 
 fn compare_records(
@@ -54,6 +58,7 @@ fn compare_records(
     target: &CompareGraph,
     source_record: u32,
     target_record: u32,
+    weights: &HashMap<String, f32>,
 ) -> f32 {
     let mut results: Vec<f32> = Vec::new();
     for field in source.vecs.keys() {
@@ -74,17 +79,22 @@ fn compare_records(
             let dummy = Vectors::empty(6144);
             let comparator = CosineDistance1536::new(&dummy);
             let distance = comparator.compare_vec_unstored(source_vec, target_vec);
-            results.push(distance);
+            let weight = weights[field];
+            results.push(distance * weight);
         }
     }
     if results.is_empty() {
         panic!("No overlap between records");
     }
-    results.iter().sum::<f32>() / results.len() as f32
+    let total = weights.values().sum::<f32>();
+    results.iter().sum::<f32>() / total
 }
 
 impl CompareCommand {
     pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+        let weights: HashMap<String, f32> =
+            serde_json::from_str(&self.weights).context("Could not parse as weights")?;
+
         let target_graph_dir_path = Path::new(&self.target_graph_dir);
         let source_graph_dir_path = Path::new(&self.source_graph_dir);
         let source_graph_path = source_graph_dir_path.join("csv.graph");
@@ -193,6 +203,7 @@ impl CompareCommand {
                         &target_compare_graph,
                         source,
                         *target,
+                        &weights,
                     );
                     if distance < self.match_threshold {
                         let source_id = source_id_graph.record_id_to_value(source).unwrap_or("");

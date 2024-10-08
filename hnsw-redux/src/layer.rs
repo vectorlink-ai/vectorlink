@@ -113,6 +113,10 @@ pub trait VectorRecall: Sync {
     fn test_recall(&self, proportion: f32, seed: u64) -> f32;
 }
 
+pub trait DetourChecker: Sync {
+    fn detourable(&self, source: u32, destination: u32, priority: f32, detours: Vec<u32>) -> bool;
+}
+
 impl Layer {
     pub fn new(neighborhoods: SimdAlignedAllocation<u32>, single_neighborhood_size: usize) -> Self {
         assert_eq!(0, neighborhoods.len() % single_neighborhood_size);

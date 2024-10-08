@@ -2,7 +2,11 @@ use std::sync::{Mutex, MutexGuard};
 
 use rayon::prelude::*;
 
-use crate::{layer::VectorSearcher, queue_view::QueueView, util::SimdAlignedAllocation};
+use crate::{
+    layer::{DetourChecker, VectorSearcher},
+    queue_view::QueueView,
+    util::SimdAlignedAllocation,
+};
 
 pub struct LayerOptimizer<'a> {
     queues: Vec<Mutex<QueueView<'a>>>,
@@ -65,11 +69,11 @@ impl<'a> LayerOptimizer<'a> {
         });
     }
 
-    pub fn improve_all_neighbors<S: VectorSearcher>(&mut self, searcher: &S) {
+    pub fn improve_all_neighbors<S: VectorSearcher + DetourChecker>(&mut self, searcher: &S) {
         self.improve_neighbors(searcher, (0..self.queues.len() as u32).into_par_iter())
     }
 
-    pub fn improve_neighbors<S: VectorSearcher, I: ParallelIterator<Item = u32>>(
+    pub fn improve_neighbors<S: VectorSearcher + DetourChecker, I: ParallelIterator<Item = u32>>(
         &mut self,
         searcher: &S,
         iter: I,
@@ -78,12 +82,16 @@ impl<'a> LayerOptimizer<'a> {
         // optimize neighborhoods
         iter.for_each(|query_vector_id| {
             let results = searcher.search(query_vector_id);
-            if query_vector_id == 45 {
-                //eprintln!("improve_neighbors found {:?}", results);
-            }
             for (found_vector_id, priority) in results.iter() {
                 let new_pair = (query_vector_id, priority);
-                if query_vector_id == found_vector_id {
+                if query_vector_id == found_vector_id
+                    || searcher.detourable(
+                        query_vector_id,
+                        found_vector_id,
+                        priority,
+                        self.detours(query_vector_id, found_vector_id),
+                    )
+                {
                     continue;
                 }
                 //eprintln!("inserting into: {}", neighbor.0);
@@ -91,5 +99,30 @@ impl<'a> LayerOptimizer<'a> {
                 let _result = destination_queue.insert(new_pair);
             }
         });
+    }
+
+    fn detours(&self, source: u32, destination: u32) -> Vec<u32> {
+        let mut detour_vec = Vec::new();
+        let neighbors = self.get(source);
+        let neighborhood = neighbors.copy_neighborhood().0;
+        std::mem::drop(neighbors);
+        for intermediate in neighborhood {
+            if intermediate == u32::MAX {
+                break;
+            }
+            let next_to_neighbors = self.get(intermediate);
+            let candidate_neighborhood = next_to_neighbors.copy_neighborhood().0;
+            std::mem::drop(next_to_neighbors);
+
+            for candidate in candidate_neighborhood {
+                if candidate == u32::MAX {
+                    break;
+                }
+                if candidate == destination {
+                    detour_vec.push(candidate)
+                }
+            }
+        }
+        detour_vec
     }
 }

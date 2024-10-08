@@ -1,5 +1,5 @@
 use crate::{
-    layer::{Layer, VectorComparator, VectorGrouper, VectorRecall, VectorSearcher},
+    layer::{DetourChecker, Layer, VectorComparator, VectorGrouper, VectorRecall, VectorSearcher},
     params::{BuildParams, OptimizationParams, SearchParams},
     ring_queue::OrderedRingQueue,
     vectors::Vector,
@@ -345,6 +345,25 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
     }
 }
 
+impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> DetourChecker for SearchGrouper<'a, C, L> {
+    fn detourable(&self, source: u32, destination: u32, priority: f32, detours: Vec<u32>) -> bool {
+        for intermediate in detours {
+            let leg_one = self.comparator.compare_vec_stored(source, intermediate);
+            if leg_one > priority {
+                continue;
+            }
+            let leg_two = self
+                .comparator
+                .compare_vec_stored(intermediate, destination);
+            if leg_two > priority {
+                continue;
+            }
+            return true;
+        }
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -409,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    //#[ignore]
     fn construct_unquantized_1536_hnsw() {
         let number_of_vecs = 100_000;
         let vecs = random_vectors_normalized(number_of_vecs, 1536, 0x533D);

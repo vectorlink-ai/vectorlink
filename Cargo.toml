@@ -2,7 +2,7 @@
 resolver = "2"
 members = [ "generate-random-vectors",
   "hnsw-redux"
-, "improve", "index-vectors", "knn", "normalize", "search-collation", "test-recall", "time-load"]
+, "improve", "index-vectors", "knn", "normalize", "search-collation", "test-recall", "time-load", "generate-vectors"]
 
 [profile.release]
 debug = true

@@ -236,10 +236,10 @@ impl IndexConfiguration {
         Self::hnsw_path(name, hnsw_root_directory).join("configuration.json")
     }
 
-    pub fn load<P: AsRef<Path>>(
+    pub fn load<P1: AsRef<Path>, P2: AsRef<Path>>(
         name: &str,
-        hnsw_root_directory: P,
-        vector_directory: P,
+        hnsw_root_directory: P1,
+        vector_directory: P2,
     ) -> io::Result<Self> {
         let hnsw_root_directory = hnsw_root_directory.as_ref();
         let meta_path = IndexConfiguration::meta_path(name, hnsw_root_directory);

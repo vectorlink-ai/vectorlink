@@ -51,6 +51,7 @@ pub trait NewIndex: Index {
 pub struct Pq1024x8 {
     pq: Pq,
     vectors: Vectors,
+
     name: String,
 }
 impl Pq1024x8 {

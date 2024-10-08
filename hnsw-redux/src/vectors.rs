@@ -26,6 +26,14 @@ pub struct Vectors {
 }
 
 impl Vectors {
+    pub fn empty(vector_byte_size: usize) -> Self {
+        let data: SimdAlignedAllocation<u8> = unsafe { SimdAlignedAllocation::alloc(0) };
+        Self {
+            data,
+            vector_byte_size,
+        }
+    }
+
     pub fn new(data: SimdAlignedAllocation<u8>, vector_byte_size: usize) -> Self {
         assert_eq!(0, data.len() % vector_byte_size);
         Self {

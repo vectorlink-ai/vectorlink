@@ -61,7 +61,7 @@ pub struct WeightsCommand {
     proportion_for_test: f32,
 }
 
-fn sigmoid(z: &DVector<f32>) -> DVector<f32> {
+pub fn sigmoid(z: &DVector<f32>) -> DVector<f32> {
     z.map(|x| 1.0 / (1.0 + (-x).exp()))
 }
 
@@ -104,7 +104,7 @@ impl Gradient for MatchClassifier {
     }
 }
 
-fn predict(x: &DMatrix<f32>, coeff: &DVector<f32>) -> DVector<f32> {
+pub fn predict(x: &DMatrix<f32>, coeff: &DVector<f32>) -> DVector<f32> {
     let y_hat = x * coeff;
     let sigmoid_y_hat = sigmoid(&y_hat);
     sigmoid_y_hat.map(|v| if v > 0.5 { 1.0 } else { 0.0 })

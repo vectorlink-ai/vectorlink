@@ -11,10 +11,12 @@ use hnsw_redux::{
     params::SearchParams,
     vectors::{Vector, Vectors},
 };
+use nalgebra::{DMatrix, DVector};
 
 use crate::{
     graph::{CompareGraph, FullGraph},
     model::EmbedderMetadata,
+    weights::sigmoid,
 };
 
 #[derive(Parser)]
@@ -39,8 +41,8 @@ pub struct CompareCommand {
     /// The initial filter threshold to determine what to test
     initial_threshold: f32,
 
-    #[arg(short, long)]
-    /// The threshold for the weighted comparison
+    #[arg(short, long, default_value_t = 0.99)]
+    /// The threshold probability
     match_threshold: f32,
 
     /// Path to output csv
@@ -60,7 +62,11 @@ pub fn compare_record_distances(
     weights: &HashMap<String, f32>,
 ) -> Vec<f32> {
     let mut results: Vec<f32> = Vec::new();
-    for field in source.vecs.keys() {
+    for field in weights.keys() {
+        if field == "__INTERCEPT__" {
+            results.push(1.0);
+            continue;
+        }
         let weight = weights.get(field);
         if weight.is_none() || weights[field] == 0.0_f32 {
             continue;
@@ -82,8 +88,7 @@ pub fn compare_record_distances(
             let dummy = Vectors::empty(6144);
             let comparator = CosineDistance1536::new(&dummy);
             let distance = comparator.compare_vec_unstored(source_vec, target_vec);
-            let weight = weights[field];
-            results.push(distance * weight);
+            results.push(distance);
         } else {
             results.push(0.5); // NOTE: This may be too unprincipled
         }
@@ -102,8 +107,11 @@ pub fn compare_records(
     weights: &HashMap<String, f32>,
 ) -> f32 {
     let results = compare_record_distances(source, target, source_record, target_record, weights);
-    let total = weights.values().sum::<f32>();
-    results.iter().sum::<f32>() / total
+    let betas: DVector<f32> = DVector::from(weights.values().copied().collect::<Vec<_>>());
+    let x: DMatrix<f32> = DMatrix::from_row_iterator(1, results.len(), results);
+    let y_hat = x * betas;
+    let sigmoid_y_hat = sigmoid(&y_hat);
+    sigmoid_y_hat[0]
 }
 
 impl CompareCommand {
@@ -214,17 +222,17 @@ impl CompareCommand {
         for (sources, targets) in candidates_for_compare {
             for source in sources {
                 for target in targets.iter() {
-                    let distance = compare_records(
+                    let probability = compare_records(
                         &source_compare_graph,
                         &target_compare_graph,
                         source,
                         *target,
                         &weights,
                     );
-                    if distance < self.match_threshold {
+                    if probability > self.match_threshold {
                         let source_id = source_id_graph.record_id_to_value(source).unwrap_or("");
                         let target_id = target_id_graph.record_id_to_value(*target).unwrap_or("");
-                        wtr.write_record([source_id, target_id, &format!("{}", distance)])?;
+                        wtr.write_record([source_id, target_id, &format!("{}", probability)])?;
                     }
                 }
             }

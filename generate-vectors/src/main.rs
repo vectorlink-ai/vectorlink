@@ -7,6 +7,7 @@ use compare::CompareCommand;
 use csv_columns::CsvColumnsCommand;
 use lines::LinesCommand;
 use model::EmbedderMetadata;
+use weights::WeightsCommand;
 
 mod compare;
 mod csv_columns;
@@ -15,6 +16,7 @@ mod lines;
 mod model;
 mod openai;
 mod util;
+mod weights;
 
 #[derive(Parser)]
 struct Command {
@@ -34,6 +36,8 @@ enum Subcommand {
     CsvColumns(CsvColumnsCommand),
     /// Compare record clusters
     Compare(CompareCommand),
+    /// Search for weights
+    FindWeights(WeightsCommand),
 }
 
 #[tokio::main]
@@ -50,5 +54,6 @@ async fn main() -> Result<(), anyhow::Error> {
         Subcommand::Lines(lc) => lc.execute(&config).await,
         Subcommand::CsvColumns(csv) => csv.execute(&config).await,
         Subcommand::Compare(cc) => cc.execute(&config).await,
+        Subcommand::FindWeights(fc) => fc.execute(&config).await,
     }
 }

@@ -22,6 +22,10 @@ pub struct CsvColumnsCommand {
     #[arg(short, long)]
     output_dir: String,
 
+    /// field to use as an id from each of the CSVs - this is never indexed
+    #[arg(long)]
+    id_field: String,
+
     /// The columns to include. if none, all are included.
     columns: Vec<String>,
 
@@ -82,7 +86,11 @@ impl CsvColumnsCommand {
                     )
                 })?;
                 let current_header = &headers[*enabled];
-                string_vecs[header_offset].push(format!("{current_header}: {val}"));
+                if *current_header == self.id_field {
+                    string_vecs[header_offset].push(val.to_string())
+                } else {
+                    string_vecs[header_offset].push(format!("{current_header}: {val}"))
+                }
             }
         }
 
@@ -92,17 +100,19 @@ impl CsvColumnsCommand {
         for (ix, strings) in enabled_headers.into_iter().zip(string_vecs) {
             let current_header = &headers[ix];
             let graph = Graph::new(strings.iter().map(|s| s.as_str()));
-            let output_path = dir_path.join(format!("{}.vecs", current_header));
-            let writer = File::create(&output_path)
-                .with_context(|| format!("could not create output file {output_path:?}"))?;
-            config.embeddings_for_into(&graph.values, writer).await?;
+            if *current_header != self.id_field {
+                let output_path = dir_path.join(format!("{}.vecs", current_header));
+                let writer = File::create(&output_path)
+                    .with_context(|| format!("could not create output file {output_path:?}"))?;
+                config.embeddings_for_into(&graph.values, writer).await?;
+            }
             fields.push((current_header.clone(), graph));
         }
 
         let output_path = dir_path.join("csv.graph");
         let writer = File::create(&output_path)
             .with_context(|| format!("could not create output file {output_path:?}"))?;
-        let full_graph = FullGraph::new(fields);
+        let full_graph = FullGraph::new(&self.id_field, fields);
         serde_json::to_writer(&writer, &full_graph)?;
         Ok(())
     }

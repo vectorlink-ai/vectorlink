@@ -4,7 +4,6 @@ use anyhow::Context;
 
 use clap::Parser;
 use csv::Writer;
-use either::IntoEither;
 use hnsw_redux::{
     comparator::CosineDistance1536,
     index::{Index, IndexConfiguration},
@@ -53,15 +52,19 @@ pub struct CompareCommand {
     weights: String,
 }
 
-fn compare_records(
+pub fn compare_record_distances(
     source: &CompareGraph,
     target: &CompareGraph,
     source_record: u32,
     target_record: u32,
     weights: &HashMap<String, f32>,
-) -> f32 {
+) -> Vec<f32> {
     let mut results: Vec<f32> = Vec::new();
     for field in source.vecs.keys() {
+        let weight = weights[field];
+        if weight == 0.0 {
+            continue;
+        }
         let source_value_id = source
             .graph
             .get(field)
@@ -81,11 +84,24 @@ fn compare_records(
             let distance = comparator.compare_vec_unstored(source_vec, target_vec);
             let weight = weights[field];
             results.push(distance * weight);
+        } else {
+            results.push(0.5); // NOTE: This may be too unprincipled
         }
     }
     if results.is_empty() {
-        panic!("No overlap between records");
+        panic!("No overlap between records - incomparable");
     }
+    results
+}
+
+pub fn compare_records(
+    source: &CompareGraph,
+    target: &CompareGraph,
+    source_record: u32,
+    target_record: u32,
+    weights: &HashMap<String, f32>,
+) -> f32 {
+    let results = compare_record_distances(source, target, source_record, target_record, weights);
     let total = weights.values().sum::<f32>();
     results.iter().sum::<f32>() / total
 }

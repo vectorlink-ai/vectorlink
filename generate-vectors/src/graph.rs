@@ -6,20 +6,33 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FullGraph {
-    fields: Vec<(String, Graph)>,
+    id_field: String,
+    fields: HashMap<String, Graph>,
 }
 
 impl FullGraph {
-    pub fn new(fields: Vec<(String, Graph)>) -> Self {
-        Self { fields }
+    pub fn new(id_field: &str, fields: Vec<(String, Graph)>) -> Self {
+        let id_field = id_field.to_string();
+        let fields: HashMap<String, Graph> = fields.into_iter().collect();
+        Self { id_field, fields }
     }
 
     pub fn get(&self, field: &str) -> Option<&Graph> {
-        self.fields.iter().find(|p| p.0 == field).map(|p| &p.1)
+        self.fields.get(field)
     }
 
     pub fn fields(&self) -> Vec<&str> {
-        self.fields.iter().map(|s| s.0.as_str()).collect()
+        self.fields.keys().map(|s| s.as_str()).collect()
+    }
+
+    pub fn record_id_field_value(&self, id: u32) -> &str {
+        self.fields[&self.id_field]
+            .record_id_to_value(id)
+            .expect("Missing id field")
+    }
+
+    pub fn record_count(&self) -> usize {
+        self.fields[&self.id_field].values.len()
     }
 }
 

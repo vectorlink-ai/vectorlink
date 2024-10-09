@@ -117,7 +117,13 @@ fn build_test_and_train<'a>(
     source_compare_graph: CompareGraph<'a>,
     target_compare_graph: CompareGraph<'a>,
     candidates: Vec<(Vec<u32>, Vec<u32>)>,
-) -> (DMatrix<f32>, DVector<f32>, DMatrix<f32>, DVector<f32>) {
+) -> (
+    Vec<String>,
+    DMatrix<f32>,
+    DVector<f32>,
+    DMatrix<f32>,
+    DVector<f32>,
+) {
     // unweighted.. we want the raw X without Beta so we can estimate
     let weights: HashMap<String, f32> = comparison_fields
         .iter()
@@ -176,7 +182,10 @@ fn build_test_and_train<'a>(
     let train_count = train_answers.len();
     let test_count = test_answers.len();
     let feature_len = comparison_fields.len() + 1; // includes intercept dummy
+    let mut feature_names: Vec<String> = weights.keys().map(|s| s.to_string()).collect();
+    feature_names.push("__INTERCEPT__".to_string());
     (
+        feature_names,
         DMatrix::from_row_iterator(
             train_count,
             feature_len,
@@ -299,14 +308,15 @@ impl WeightsCommand {
         let target_compare_graph = CompareGraph::new(&target_graph, target_vecs);
         let proportion_for_test = 0.33;
         let comparison_fields = self.comparison_fields.to_vec();
-        let (train_features, train_answers, test_features, test_answers) = build_test_and_train(
-            proportion_for_test,
-            comparison_fields,
-            answers,
-            source_compare_graph,
-            target_compare_graph,
-            candidates_for_compare,
-        );
+        let (feature_names, train_features, train_answers, test_features, test_answers) =
+            build_test_and_train(
+                proportion_for_test,
+                comparison_fields,
+                answers,
+                source_compare_graph,
+                target_compare_graph,
+                candidates_for_compare,
+            );
 
         // Define our cost function
         let cost = MatchClassifier {
@@ -342,7 +352,14 @@ impl WeightsCommand {
         let y_hat_as_nalgebra = predict(&test_features, &betas);
         let y_hat: Vec<f32> = y_hat_as_nalgebra.into_iter().copied().collect();
         let score = roc_auc_score(&y, &y_hat);
+
+        let weights: HashMap<String, f32> = feature_names
+            .into_iter()
+            .zip(betas.data.as_vec().iter().copied())
+            .collect();
         eprintln!("ROC AUC {}", score);
+        let weights_str = serde_json::to_string(&weights).context("Could not serialize weights")?;
+        eprintln!("{weights_str}");
         Ok(())
     }
 }

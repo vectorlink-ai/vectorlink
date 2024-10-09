@@ -61,8 +61,8 @@ pub fn compare_record_distances(
 ) -> Vec<f32> {
     let mut results: Vec<f32> = Vec::new();
     for field in source.vecs.keys() {
-        let weight = weights[field];
-        if weight == 0.0 {
+        let weight = weights.get(field);
+        if weight.is_none() || weights[field] == 0.0_f32 {
             continue;
         }
         let source_value_id = source

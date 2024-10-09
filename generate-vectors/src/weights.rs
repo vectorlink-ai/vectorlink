@@ -61,14 +61,8 @@ pub struct WeightsCommand {
     proportion_for_test: f32,
 }
 
-fn sigmoid(v: f32) -> f32 {
-    if v < -40.0 {
-        0.0
-    } else if v > 40.0 {
-        1.0
-    } else {
-        1.0 / (1.0 + f32::exp(-v))
-    }
+fn sigmoid(z: &DVector<f32>) -> DVector<f32> {
+    z.map(|x| 1.0 / (1.0 + (-x).exp()))
 }
 
 struct MatchClassifier {
@@ -81,15 +75,15 @@ impl CostFunction for MatchClassifier {
     type Output = f32;
 
     fn cost(&self, w: &Self::Param) -> Result<Self::Output, Error> {
-        let mut f = 0_f32;
-        let n = self.features.nrows();
-
-        for i in 0..n {
-            let xi = &self.features.row(i);
-            let wx = w.dot(xi);
-            f += self.answers[i] * sigmoid(wx).ln()
-                + (1.0 - self.answers[i]) * (1.0 - sigmoid(wx)).ln();
-        }
+        let x = &self.features;
+        let xw = x * w;
+        let sigmoid_wx: DVector<f32> = sigmoid(&xw);
+        let f = self
+            .answers
+            .zip_map(&sigmoid_wx, |y, swx_i| {
+                y * swx_i.ln() + (1.0 - y) * (1.0 - swx_i).ln()
+            })
+            .sum();
 
         Ok(-f)
     }
@@ -100,26 +94,20 @@ impl Gradient for MatchClassifier {
     type Gradient = DVector<f32>;
 
     fn gradient(&self, w: &Self::Param) -> Result<Self::Gradient, Error> {
-        let (n, p) = self.features.shape();
-        let mut g = vec![0_f32; w.len()];
-
-        for i in 0..n {
-            let xi = &self.features.row(i);
-            let wx = w.dot(xi);
-
-            let dyi = sigmoid(wx) - self.answers[i];
-            for j in 0..p {
-                g[j] += dyi * self.features[(i, j)];
-            }
-            g[p] += dyi;
-        }
-        Ok(DVector::from(g))
+        let (n, _) = self.features.shape();
+        let x = &self.features;
+        let y = &self.answers;
+        let xw = x * w;
+        let dy = sigmoid(&xw) - y;
+        let g: DVector<f32> = x.transpose() * dy / n as f32;
+        Ok(g)
     }
 }
 
-fn predict(x: &DMatrix<f32>, coeff: &DVector<f32>, intercept: f32) -> DVector<f32> {
-    let y_hat = (x * coeff).add_scalar(intercept);
-    y_hat.map(|v| if sigmoid(v) > 0.5 { 1.0 } else { 0.0 })
+fn predict(x: &DMatrix<f32>, coeff: &DVector<f32>) -> DVector<f32> {
+    let y_hat = x * coeff;
+    let sigmoid_y_hat = sigmoid(&y_hat);
+    sigmoid_y_hat.map(|v| if v > 0.5 { 1.0 } else { 0.0 })
 }
 
 fn build_test_and_train<'a>(
@@ -149,13 +137,15 @@ fn build_test_and_train<'a>(
         for source in sources {
             for target in targets.iter() {
                 let training = *source < record_max || *target < record_max;
-                let distances = compare_record_distances(
+                let mut distances = compare_record_distances(
                     &source_compare_graph,
                     &target_compare_graph,
                     *source,
                     *target,
                     &weights,
                 );
+                // Extend with dummy for intercept...
+                distances.push(1.0);
                 if training {
                     train_features.push(distances);
                 } else {
@@ -183,17 +173,19 @@ fn build_test_and_train<'a>(
             }
         }
     }
-    let feature_len = comparison_fields.len();
+    let train_count = train_answers.len();
+    let test_count = test_answers.len();
+    let feature_len = comparison_fields.len() + 1; // includes intercept dummy
     (
         DMatrix::from_row_iterator(
-            count,
+            train_count,
             feature_len,
             train_features.iter().flat_map(|v| v.iter().copied()),
         ),
         DVector::from(train_answers),
         DMatrix::from_row_iterator(
-            count,
-            feature_len,
+            test_count,
+            feature_len, // includes intercept dummy
             test_features.iter().flat_map(|v| v.iter().copied()),
         ),
         DVector::from(test_answers),
@@ -340,16 +332,14 @@ impl WeightsCommand {
             .configure(|state| state.param(init_param).max_iters(100))
             .add_observer(SlogLogger::term(), ObserverMode::Always)
             .run()?;
-        let params = &res
+        let betas: DVector<f32> = res
             .state()
             .best_param
             .clone()
             .context("Could not estimate parameters")?;
-        let weights: DVector<f32> = params.rows(0, field_width).into_owned();
-        let intercept = params[field_width];
 
         let y: Vec<f32> = test_answers.into_iter().copied().collect();
-        let y_hat_as_nalgebra = predict(&test_features, &weights, intercept);
+        let y_hat_as_nalgebra = predict(&test_features, &betas);
         let y_hat: Vec<f32> = y_hat_as_nalgebra.into_iter().copied().collect();
         let score = roc_auc_score(&y, &y_hat);
         eprintln!("ROC AUC {}", score);

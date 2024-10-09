@@ -55,7 +55,7 @@ impl CsvColumnsCommand {
             .iter()
             .enumerate()
             .filter_map(|(ix, h)| {
-                if self.columns.contains(h) {
+                if self.columns.contains(h) || *h == self.id_field {
                     Some(ix)
                 } else {
                     None

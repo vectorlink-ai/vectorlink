@@ -5,7 +5,6 @@ use argmin::{
     solver::{linesearch::MoreThuenteLineSearch, quasinewton::LBFGS},
 };
 use argmin_observer_slog::SlogLogger;
-use argmin_testfunctions::{rosenbrock, rosenbrock_derivative};
 
 use anyhow::Context;
 
@@ -16,7 +15,6 @@ use hnsw_redux::{
     vectors::{Vector, Vectors},
 };
 use nalgebra::{DMatrix, DVector};
-use ndarray::Array1;
 use smartcore::metrics::roc_auc_score;
 
 use crate::{
@@ -190,13 +188,13 @@ fn build_test_and_train<'a>(
         DMatrix::from_row_iterator(
             count,
             feature_len,
-            train_features.iter().flat_map(|v| v.into_iter().copied()),
+            train_features.iter().flat_map(|v| v.iter().copied()),
         ),
         DVector::from(train_answers),
         DMatrix::from_row_iterator(
             count,
             feature_len,
-            test_features.iter().flat_map(|v| v.into_iter().copied()),
+            test_features.iter().flat_map(|v| v.iter().copied()),
         ),
         DVector::from(test_answers),
     )
@@ -204,19 +202,13 @@ fn build_test_and_train<'a>(
 
 impl WeightsCommand {
     pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
-        // guess default weights of pure average
-        let weights: HashMap<String, f32> = self
-            .comparison_fields
-            .iter()
-            .map(|s| (s.to_string(), 1.0))
-            .collect();
-
         let target_graph_dir_path = Path::new(&self.target_graph_dir);
         let source_graph_dir_path = Path::new(&self.source_graph_dir);
         let source_graph_path = source_graph_dir_path.join("csv.graph");
         let target_graph_path = target_graph_dir_path.join("csv.graph");
         let source_graph_file =
-            File::open(source_graph_path).context("source file could not be loaded")?;
+            File::open(&source_graph_path).context("source file could not be loaded")?;
+        eprintln!("source_graph_path: {:?}", &source_graph_path);
         let source_graph: FullGraph =
             serde_json::from_reader(source_graph_file).context("Unable to load source graph")?;
         let target_graph_file =
@@ -362,25 +354,5 @@ impl WeightsCommand {
         let score = roc_auc_score(&y, &y_hat);
         eprintln!("ROC AUC {}", score);
         Ok(())
-    }
-}
-
-struct Rosenbrock {}
-
-impl CostFunction for Rosenbrock {
-    type Param = DVector<f64>;
-    type Output = f64;
-
-    fn cost(&self, p: &Self::Param) -> Result<Self::Output, Error> {
-        Ok(rosenbrock(p.as_slice()))
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = DVector<f64>;
-    type Gradient = DVector<f64>;
-
-    fn gradient(&self, p: &Self::Param) -> Result<Self::Gradient, Error> {
-        Ok(DVector::from(rosenbrock_derivative(p.as_slice())))
     }
 }

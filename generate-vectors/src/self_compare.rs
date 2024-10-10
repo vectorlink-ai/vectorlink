@@ -115,7 +115,7 @@ impl SelfCompareCommand {
             .collect();
 
         let graph_dir_path = Path::new(&self.graph_dir);
-        let graph_path = graph_dir_path.join("csv.graph");
+        let graph_path = graph_dir_path.join("aggregated.graph");
         let graph_file = File::open(graph_path).context("graph file could not be opened")?;
         let graph: FullGraph =
             serde_json::from_reader(graph_file).context("Unable to load graph")?;

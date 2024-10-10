@@ -205,8 +205,8 @@ impl WeightsCommand {
     pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
         let target_graph_dir_path = Path::new(&self.target_graph_dir);
         let source_graph_dir_path = Path::new(&self.source_graph_dir);
-        let source_graph_path = source_graph_dir_path.join("csv.graph");
-        let target_graph_path = target_graph_dir_path.join("csv.graph");
+        let source_graph_path = source_graph_dir_path.join("aggregated.graph");
+        let target_graph_path = target_graph_dir_path.join("aggregated.graph");
         let source_graph_file =
             File::open(&source_graph_path).context("source file could not be loaded")?;
         eprintln!("source_graph_path: {:?}", &source_graph_path);

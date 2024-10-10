@@ -109,7 +109,7 @@ impl CsvColumnsCommand {
             fields.push((current_header.clone(), graph));
         }
 
-        let output_path = dir_path.join("csv.graph");
+        let output_path = dir_path.join("aggregated.graph");
         let writer = File::create(&output_path)
             .with_context(|| format!("could not create output file {output_path:?}"))?;
         let full_graph = FullGraph::new(&self.id_field, fields);

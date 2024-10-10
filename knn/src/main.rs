@@ -28,7 +28,7 @@ fn main() -> io::Result<()> {
         &args.vector_directory,
     )?;
     let sp = SearchParams::default();
-    hnsw.knn(20, &sp, &args.cluster_file);
+    hnsw.knn_into_file(20, sp, &args.cluster_file);
 
     Ok(())
 }

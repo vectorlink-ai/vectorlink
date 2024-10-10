@@ -1,5 +1,6 @@
 use enum_dispatch::enum_dispatch;
-use rayon::iter::ParallelIterator;
+use itertools::Either;
+use rayon::prelude::*;
 use std::fs::OpenOptions;
 use std::io;
 use std::os::unix::prelude::FileExt;
@@ -33,7 +34,7 @@ pub trait Index {
         op: &OptimizationParams,
     ) -> Result<f32, io::Error>;
     fn optimize(&mut self, op: &OptimizationParams) -> f32;
-    fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P);
+    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P);
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
     }
@@ -51,9 +52,9 @@ pub trait NewIndex: Index {
 pub struct Pq1024x8 {
     pq: Pq,
     vectors: Vectors,
-
     name: String,
 }
+
 impl Pq1024x8 {
     pub fn new(name: String, pq: Pq, vectors: Vectors) -> Self {
         Self { name, pq, vectors }
@@ -144,14 +145,14 @@ impl Index for Pq1024x8 {
         Ok(recall)
     }
 
-    fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
+    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P) {
         let quantized_comparator =
             NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
         let file = File::create(path).unwrap();
         let record_size = k * (size_of::<(u32, f32)>());
         self.pq
             .quantized_hnsw
-            .knn(k, sp, &quantized_comparator)
+            .knn(k, sp, quantized_comparator)
             .for_each(|(i, pairs)| {
                 let raw_data =
                     unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
@@ -225,7 +226,7 @@ impl Index for Hnsw1024 {
         self.hnsw.optimize(op, &comparator)
     }
 
-    fn knn<P: AsRef<Path>>(&self, k: usize, sp: &SearchParams, path: P) {
+    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P) {
         let comparator = CosineDistance1024::new(&self.vectors);
         let file = OpenOptions::new()
             .create(true)
@@ -234,18 +235,36 @@ impl Index for Hnsw1024 {
             .open(path)
             .unwrap();
         let record_size = k * (size_of::<(u32, f32)>());
-        self.hnsw
-            .knn(k, sp, &comparator)
-            .for_each(|(i, mut pairs)| {
-                pairs.resize(k, (u32::MAX, f32::MAX));
-                let pairs_len = pairs.len();
-                assert_eq!(pairs_len, k);
-                let raw_data: &[u8] =
-                    unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
-                let address = (i as usize * record_size) as u64;
-                file.write_all_at(raw_data, address)
-                    .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
-            });
+        self.hnsw.knn(k, sp, comparator).for_each(|(i, mut pairs)| {
+            pairs.resize(k, (u32::MAX, f32::MAX));
+            let pairs_len = pairs.len();
+            assert_eq!(pairs_len, k);
+            let raw_data: &[u8] =
+                unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+            let address = (i as usize * record_size) as u64;
+            file.write_all_at(raw_data, address)
+                .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
+        });
+    }
+}
+
+impl IndexConfiguration {
+    pub fn knn(&self, k: usize) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + '_ {
+        match self {
+            IndexConfiguration::Hnsw1024(index) => {
+                let comparator = CosineDistance1024::new(&index.vectors);
+                let sp = SearchParams::default();
+                Either::Left(index.hnsw.knn(k, sp, comparator))
+            }
+            IndexConfiguration::Pq1024x8(index) => {
+                let quantized_comparator = NewMemoizedComparator128::new(
+                    &index.pq.quantized_vectors,
+                    &index.pq.memoized_distances,
+                );
+                let sp = SearchParams::default();
+                Either::Right(index.pq.quantized_hnsw.knn(k, sp, quantized_comparator))
+            }
+        }
     }
 }
 
@@ -391,6 +410,6 @@ mod tests {
 
         assert!(recall > 0.999);
 
-        index.knn(20, &sp, "/tmp/dump")
+        index.knn_into_file(20, sp, "/tmp/dump")
     }
 }

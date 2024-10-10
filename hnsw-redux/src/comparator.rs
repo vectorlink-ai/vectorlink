@@ -12,6 +12,7 @@ use crate::{
     vectors::Vectors,
 };
 
+#[derive(Clone)]
 pub struct CosineDistance1024<'a> {
     vectors: &'a Vectors,
 }
@@ -98,6 +99,7 @@ impl<'a> VectorComparator for CosineDistance1024<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct CosineDistance1536<'a> {
     vectors: &'a Vectors,
 }
@@ -184,6 +186,7 @@ impl<'a> VectorComparator for CosineDistance1536<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct EuclideanDistance8x8<'a> {
     vectors: &'a Vectors,
 }
@@ -289,6 +292,7 @@ impl<'a> CentroidDistanceCalculator for DotProductCentroidDistanceCalculator8<'a
     }
 }
 
+#[derive(Clone)]
 pub struct MemoizedComparator128<'a> {
     quantized_vectors: &'a Vectors,
     memoized: &'a MemoizedCentroidDistances,

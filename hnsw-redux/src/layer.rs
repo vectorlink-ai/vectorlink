@@ -46,7 +46,7 @@ impl AsRef<Layer> for Layer {
     }
 }
 
-pub trait VectorComparator: Sync {
+pub trait VectorComparator: Sync + Clone + Send {
     fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]);
     fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]);
     fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]);
@@ -245,7 +245,7 @@ impl Layer {
         ids_slice: &mut [u32],
         priorities_slice: &mut [f32],
         search_params: &SearchParams,
-        comparator: &C,
+        comparator: C,
     ) {
         uninitalized_visit_queue.reinit_from(search_queue);
         let visit_queue = uninitalized_visit_queue;
@@ -261,7 +261,7 @@ impl Layer {
                 search_params,
                 ids_slice,
                 priorities_slice,
-                comparator,
+                &comparator,
             );
 
             if n_pops == 0 {
@@ -611,11 +611,11 @@ impl Layer {
         )
     }
 
-    pub fn knn<'a, C: VectorComparator>(
+    pub fn knn<'a, C: VectorComparator + 'a>(
         &'a self,
         k: usize,
-        sp: &'a SearchParams,
-        comparator: &'a C,
+        sp: SearchParams,
+        comparator: C,
     ) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + 'a {
         let neighborhood_size = self.single_neighborhood_size();
         let node_count = self.number_of_neighborhoods();
@@ -638,8 +638,8 @@ impl Layer {
                 &mut uninitialized_visit_queue,
                 &mut ids,
                 &mut priorities,
-                sp,
-                comparator,
+                &sp,
+                comparator.clone(),
             );
             let mut results = search_queue.get_all();
             results.truncate(k);

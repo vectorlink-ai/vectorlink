@@ -77,7 +77,7 @@ impl Hnsw {
                 &mut ids,
                 &mut priorities,
                 sp,
-                comparator,
+                comparator.clone(),
             )
         }
     }
@@ -248,11 +248,11 @@ impl Hnsw {
         self.layers.len()
     }
 
-    pub fn knn<'a, C: VectorComparator>(
+    pub fn knn<'a, C: VectorComparator + 'a>(
         &'a self,
         k: usize,
-        sp: &'a SearchParams,
-        comparator: &'a C,
+        sp: SearchParams,
+        comparator: C,
     ) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + 'a {
         assert!(!self.layers.is_empty());
         let bottom_layer = self.layers.last().unwrap();

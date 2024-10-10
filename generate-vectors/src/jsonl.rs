@@ -1,20 +1,20 @@
 //! index json lines using a template dir
 
 use std::{
-    collections::HashMap,
     fs::{self, File},
     io::BufRead,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use anyhow::Context;
 use clap::Parser;
-use csv::StringRecord;
+
 use handlebars::Handlebars;
 
 use crate::{
     graph::{FullGraph, Graph},
     model::EmbedderMetadata,
+    templates::{read_templates_from_dir, ID_NAME},
     util::file_or_stdin_reader,
 };
 
@@ -39,49 +39,13 @@ pub struct JsonLinesCommand {
 
 impl JsonLinesCommand {
     pub async fn execute(&self, config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
-        const ID_NAME: &'static str = "__ID_FIELD__";
         let template_dir = Path::new(&self.template_dir);
-        let mut template_names = vec![ID_NAME.to_string()];
-        let mut templates = Handlebars::new();
-        for entry in fs::read_dir(template_dir).context("could not read template dir")? {
-            let entry = entry.context("could not read entry in template dir")?;
-            if !entry
-                .file_type()
-                .context("could not get file type")?
-                .is_file()
-            {
-                continue;
-            }
-            let path = entry.path().to_owned();
-            let file_name = path
-                .file_name()
-                .context("could not convert template file name into utf8")?
-                .to_str()
-                .context("could not parse file name as utf8")?;
-
-            if !file_name.ends_with(".handlebars") {
-                continue;
-            }
-
-            let template_name = path
-                .file_stem()
-                .expect(".handlebars but still no stem")
-                .to_str()
-                .expect("non utf8 file stem");
-
-            let template_source =
-                fs::read_to_string(entry.path()).context("could not read handlebars template")?;
-            templates
-                .register_template_string(template_name, &template_source)
-                .context("could not compile template")?;
-            let template = handlebars::Template::compile(&template_source)
-                .context("could not compile handlebars template")?;
-            template_names.push(template_name.to_string());
-        }
+        let (template_names, templates) =
+            read_templates_from_dir(template_dir).context("failed loading templates dir")?;
 
         let reader =
             file_or_stdin_reader(self.input.as_ref()).context("could not open input file")?;
-        let mut buffered_reader = reader.lines();
+        let buffered_reader = reader.lines();
         let mut string_vecs = vec![Vec::new(); template_names.len()];
         for line in buffered_reader {
             let line = line.context("could not read line from input file")?;

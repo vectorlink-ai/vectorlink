@@ -19,6 +19,7 @@ mod lines;
 mod model;
 mod openai;
 mod self_compare;
+mod templates;
 mod util;
 mod weights;
 

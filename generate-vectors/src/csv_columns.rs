@@ -1,14 +1,16 @@
 //! index all columns of a csv into files
 
-use std::{fs::File, path::Path};
+use std::{collections::HashMap, fs::File, path::Path};
 
 use anyhow::Context;
 use clap::Parser;
 use csv::StringRecord;
+use serde::{de::value::MapDeserializer, Deserialize};
 
 use crate::{
     graph::{FullGraph, Graph},
     model::EmbedderMetadata,
+    templates::{read_templates_from_dir, ID_NAME},
     util::file_or_stdin_reader,
 };
 
@@ -26,8 +28,9 @@ pub struct CsvColumnsCommand {
     #[arg(long)]
     id_field: String,
 
-    /// The columns to include. if none, all are included.
-    columns: Vec<String>,
+    /// path to a directory with templates
+    #[arg(short, long)]
+    template_dir: String,
 
     /// column header. if not provided, first line is assumed to be the column header
     #[arg(long)]
@@ -36,6 +39,9 @@ pub struct CsvColumnsCommand {
 
 impl CsvColumnsCommand {
     pub async fn execute(&self, config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+        let template_dir = Path::new(&self.template_dir);
+        let (template_names, templates) =
+            read_templates_from_dir(template_dir).context("failed loading templates dir")?;
         let reader =
             file_or_stdin_reader(self.input.as_ref()).context("could not open input file")?;
         let mut csv_reader = csv::ReaderBuilder::new()
@@ -51,45 +57,32 @@ impl CsvColumnsCommand {
             headers = record.iter().map(|s| s.to_owned()).collect();
         }
 
-        let enabled_headers: Vec<usize> = headers
-            .iter()
-            .enumerate()
-            .filter_map(|(ix, h)| {
-                if self.columns.contains(h) || *h == self.id_field {
-                    Some(ix)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let missing_header_names: Vec<_> = self
-            .columns
-            .iter()
-            .filter(|h| !headers.contains(h))
-            .collect();
-
-        if !missing_header_names.is_empty() {
-            return Err(anyhow::anyhow!("missing headers: {missing_header_names:?}"));
-        }
-
         let dir_path = Path::new(&self.output_dir);
 
-        let mut string_vecs = vec![Vec::new(); enabled_headers.len()];
+        let mut string_vecs = vec![Vec::new(); template_names.len()];
+        let id_field_idx = headers
+            .iter()
+            .position(|x| *x == self.id_field)
+            .context("I field is not in header")?;
         for (ix, record) in csv_reader.into_records().enumerate() {
             let record = record.with_context(|| format!("could not parse record {ix}"))?;
-
-            for (header_offset, enabled) in enabled_headers.iter().enumerate() {
-                let val = record.get(*enabled).with_context(|| {
-                    format!(
-                        "could not retrieve column {enabled} ({}) from record",
-                        headers[*enabled]
-                    )
-                })?;
-                let current_header = &headers[*enabled];
-                if *current_header == self.id_field {
-                    string_vecs[header_offset].push(val.to_string())
+            for (field_index, template_name) in template_names.iter().enumerate() {
+                if template_name == ID_NAME {
+                    let id = record[id_field_idx].to_string();
+                    string_vecs[field_index].push(id);
                 } else {
-                    string_vecs[header_offset].push(format!("{current_header}: {val}"))
+                    let json: serde_json::Value = serde_json::Value::deserialize(
+                        MapDeserializer::<_, serde_json::Error>::new(
+                            headers
+                                .iter()
+                                .map(|s| s.to_string())
+                                .zip(record.into_iter()),
+                        ),
+                    )?;
+                    let result = templates
+                        .render(template_name, &json)
+                        .context("could not render handlebars")?;
+                    string_vecs[field_index].push(result);
                 }
             }
         }
@@ -97,16 +90,15 @@ impl CsvColumnsCommand {
         // csv has been split up into columns. call out
         std::fs::create_dir_all(dir_path).context("could not create output directory")?;
         let mut fields = Vec::new();
-        for (ix, strings) in enabled_headers.into_iter().zip(string_vecs) {
-            let current_header = &headers[ix];
+        for (template_name, strings) in template_names.into_iter().zip(string_vecs) {
             let graph = Graph::new(strings.iter().map(|s| s.as_str()));
-            if *current_header != self.id_field {
-                let output_path = dir_path.join(format!("{}.vecs", current_header));
+            if template_name != ID_NAME {
+                let output_path = dir_path.join(format!("{}.vecs", template_name));
                 let writer = File::create(&output_path)
                     .with_context(|| format!("could not create output file {output_path:?}"))?;
                 config.embeddings_for_into(&graph.values, writer).await?;
             }
-            fields.push((current_header.clone(), graph));
+            fields.push((template_name, graph));
         }
 
         let output_path = dir_path.join("aggregated.graph");

@@ -31,11 +31,11 @@ pub struct SelfCompareCommand {
     /// Field on which to return matches
     id_field: String,
 
-    #[arg(short, long)]
+    #[arg(short = 't', long)]
     /// The initial filter threshold to determine what to test
     initial_threshold: f32,
 
-    #[arg(short, long, default_value_t = 0.99)]
+    #[arg(short = 'm', long, default_value_t = 0.99)]
     /// The threshold probability
     match_threshold: f32,
 
@@ -46,6 +46,9 @@ pub struct SelfCompareCommand {
     /// Path to output csv
     #[arg(short, long)]
     weights: String,
+
+    #[arg(short = 's', long)]
+    include_self: bool,
 }
 
 pub fn self_compare_record_distances(
@@ -178,6 +181,9 @@ impl SelfCompareCommand {
         for (sources, targets) in candidates_for_compare {
             for source in sources {
                 for target in targets.iter() {
+                    if !self.include_self && source == *target {
+                        continue;
+                    }
                     let probability =
                         self_compare_records(&compare_graph, source, *target, &weights);
                     if probability > self.match_threshold {

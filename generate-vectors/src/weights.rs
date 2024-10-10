@@ -125,7 +125,7 @@ fn build_test_and_train<'a>(
     DVector<f32>,
 ) {
     // unweighted.. we want the raw X without Beta so we can estimate
-    let weights: HashMap<String, f32> = comparison_fields
+    let weights: Vec<(String, f32)> = comparison_fields
         .iter()
         .map(|s| (s.to_string(), 1.0))
         .collect();
@@ -182,7 +182,7 @@ fn build_test_and_train<'a>(
     let train_count = train_answers.len();
     let test_count = test_answers.len();
     let feature_len = comparison_fields.len() + 1; // includes intercept dummy
-    let mut feature_names: Vec<String> = weights.keys().map(|s| s.to_string()).collect();
+    let mut feature_names: Vec<String> = weights.iter().map(|(s, _)| s.to_string()).collect();
     feature_names.push("__INTERCEPT__".to_string());
     (
         feature_names,

@@ -59,16 +59,12 @@ pub fn compare_record_distances(
     target: &CompareGraph,
     source_record: u32,
     target_record: u32,
-    weights: &HashMap<String, f32>,
+    weights: &Vec<(String, f32)>,
 ) -> Vec<f32> {
-    let mut results: Vec<f32> = Vec::new();
-    for field in weights.keys() {
+    let mut results: Vec<f32> = Vec::with_capacity(weights.len());
+    for (field, _) in weights {
         if field == "__INTERCEPT__" {
             results.push(1.0);
-            continue;
-        }
-        let weight = weights.get(field);
-        if weight.is_none() || weights[field] == 0.0_f32 {
             continue;
         }
         let source_value_id = source
@@ -104,10 +100,10 @@ pub fn compare_records(
     target: &CompareGraph,
     source_record: u32,
     target_record: u32,
-    weights: &HashMap<String, f32>,
+    weights: &Vec<(String, f32)>,
 ) -> f32 {
     let results = compare_record_distances(source, target, source_record, target_record, weights);
-    let betas: DVector<f32> = DVector::from(weights.values().copied().collect::<Vec<_>>());
+    let betas: DVector<f32> = DVector::from(weights.iter().map(|(_, w)| *w).collect::<Vec<_>>());
     let x: DMatrix<f32> = DMatrix::from_row_iterator(1, results.len(), results);
     let y_hat = x * betas;
     let sigmoid_y_hat = sigmoid(&y_hat);
@@ -116,8 +112,12 @@ pub fn compare_records(
 
 impl CompareCommand {
     pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
-        let weights: HashMap<String, f32> =
+        let weights_map: HashMap<String, f32> =
             serde_json::from_str(&self.weights).context("Could not parse as weights")?;
+        let weights: Vec<(String, f32)> = weights_map
+            .iter()
+            .map(|(s, f)| (s.to_string(), *f))
+            .collect();
 
         let target_graph_dir_path = Path::new(&self.target_graph_dir);
         let source_graph_dir_path = Path::new(&self.source_graph_dir);
@@ -218,7 +218,7 @@ impl CompareCommand {
         let target_compare_graph = CompareGraph::new(&target_graph, target_vecs);
 
         let mut wtr = Writer::from_path(&self.output_file)?;
-        wtr.write_record(["source_id", "target_id", "distance"])?;
+        wtr.write_record(["source_id", "target_id", "probability"])?;
         for (sources, targets) in candidates_for_compare {
             for source in sources {
                 for target in targets.iter() {

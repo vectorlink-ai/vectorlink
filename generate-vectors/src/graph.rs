@@ -46,7 +46,11 @@ pub struct Graph {
 impl Graph {
     pub fn new<'a, I: Iterator<Item = &'a str>>(iter: I) -> Self {
         let mut pairs: Vec<(u32, &str)> = iter.enumerate().map(|(i, s)| (i as u32, s)).collect();
-        pairs.sort_by(|elt1, elt2| elt1.1.cmp(elt2.1));
+        // ensure ordering is random
+        pairs.sort_by(|elt1, elt2| {
+            gxhash::gxhash32(elt1.1.as_bytes(), 0x533D)
+                .cmp(&gxhash::gxhash32(elt2.1.as_bytes(), 0x533D))
+        });
         let mut values: Vec<String> = Vec::new();
         let record_to_value: HashMap<u32, u32> = pairs
             .chunk_by(|x, y| x.1 == y.1)

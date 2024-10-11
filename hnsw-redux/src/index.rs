@@ -6,6 +6,7 @@ use std::io;
 use std::os::unix::prelude::FileExt;
 use std::{fs::File, path::Path};
 
+use crate::comparator::CosineDistance1536;
 use crate::params::OptimizationParams;
 use crate::{
     comparator::{
@@ -60,7 +61,14 @@ impl Pq1024x8 {
         Self { name, pq, vectors }
     }
 }
+
 pub struct Hnsw1024 {
+    hnsw: Hnsw,
+    vectors: Vectors,
+    name: String,
+}
+
+pub struct Hnsw1536 {
     hnsw: Hnsw,
     vectors: Vectors,
     name: String,
@@ -69,6 +77,7 @@ pub struct Hnsw1024 {
 #[enum_dispatch(Index)]
 pub enum IndexConfiguration {
     Hnsw1024(Hnsw1024),
+    Hnsw1536(Hnsw1536),
     Pq1024x8(Pq1024x8),
 }
 
@@ -248,13 +257,104 @@ impl Index for Hnsw1024 {
     }
 }
 
+impl Hnsw1536 {
+    pub fn new(name: String, hnsw: Hnsw, vectors: Vectors) -> Self {
+        Self {
+            name,
+            hnsw,
+            vectors,
+        }
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn hnsw(&self) -> &Hnsw {
+        &self.hnsw
+    }
+
+    pub fn generate(name: String, vectors: Vectors, bp: &BuildParams) -> Self {
+        let comparator = CosineDistance1536::new(&vectors);
+        let hnsw = Hnsw::generate(bp, &comparator);
+
+        Hnsw1536 {
+            name,
+            hnsw,
+            vectors,
+        }
+    }
+}
+
+impl Index for Hnsw1536 {
+    fn num_vectors(&self) -> usize {
+        self.vectors.num_vecs()
+    }
+
+    fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
+        let Hnsw1536 { hnsw, vectors, .. } = self;
+        let comparator = CosineDistance1536::new(vectors);
+        hnsw.search_from_initial(query_vec, sp, &comparator)
+    }
+
+    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
+        let Hnsw1536 { hnsw, vectors, .. } = self;
+        let comparator = CosineDistance1536::new(vectors);
+        hnsw.test_recall(proportion, sp, &comparator, seed)
+    }
+
+    fn optimize_and_save<P: AsRef<Path>>(
+        &mut self,
+        root: P,
+        op: &OptimizationParams,
+    ) -> Result<f32, io::Error> {
+        let comparator = CosineDistance1536::new(&self.vectors);
+        let mut recall = 0.0;
+        for i in 0..self.hnsw.layers().len() {
+            recall = self.hnsw.optimize_layer(i, op, &comparator);
+            self.store_hnsw(&root)?;
+        }
+        Ok(recall)
+    }
+
+    fn optimize(&mut self, op: &OptimizationParams) -> f32 {
+        let comparator = CosineDistance1536::new(&self.vectors);
+        self.hnsw.optimize(op, &comparator)
+    }
+
+    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P) {
+        let comparator = CosineDistance1536::new(&self.vectors);
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .unwrap();
+        let record_size = k * (size_of::<(u32, f32)>());
+        self.hnsw.knn(k, sp, comparator).for_each(|(i, mut pairs)| {
+            pairs.resize(k, (u32::MAX, f32::MAX));
+            let pairs_len = pairs.len();
+            assert_eq!(pairs_len, k);
+            let raw_data: &[u8] =
+                unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+            let address = (i as usize * record_size) as u64;
+            file.write_all_at(raw_data, address)
+                .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
+        });
+    }
+}
+
 impl IndexConfiguration {
     pub fn knn(&self, k: usize) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + '_ {
         match self {
             IndexConfiguration::Hnsw1024(index) => {
                 let comparator = CosineDistance1024::new(&index.vectors);
                 let sp = SearchParams::default();
-                Either::Left(index.hnsw.knn(k, sp, comparator))
+                Either::Left(Either::Left(index.hnsw.knn(k, sp, comparator)))
+            }
+            IndexConfiguration::Hnsw1536(index) => {
+                let comparator = CosineDistance1536::new(&index.vectors);
+                let sp = SearchParams::default();
+                Either::Right(index.hnsw.knn(k, sp, comparator))
             }
             IndexConfiguration::Pq1024x8(index) => {
                 let quantized_comparator = NewMemoizedComparator128::new(
@@ -262,7 +362,11 @@ impl IndexConfiguration {
                     &index.pq.memoized_distances,
                 );
                 let sp = SearchParams::default();
-                Either::Right(index.pq.quantized_hnsw.knn(k, sp, quantized_comparator))
+                Either::Left(Either::Right(index.pq.quantized_hnsw.knn(
+                    k,
+                    sp,
+                    quantized_comparator,
+                )))
             }
         }
     }

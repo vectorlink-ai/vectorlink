@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     hnsw::Hnsw,
-    index::{Hnsw1024, IndexConfiguration},
+    index::{Hnsw1024, Hnsw1536, IndexConfiguration},
     layer::Layer,
     util::SimdAlignedAllocation,
     vectors::Vectors,
@@ -177,6 +177,7 @@ impl Hnsw {
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub enum HnswType {
+    Hnsw1536,
     Hnsw1024,
     Quantized128x8,
 }
@@ -227,6 +228,46 @@ impl Hnsw1024 {
     }
 }
 
+impl Hnsw1536 {
+    fn metadata(&self) -> HnswConfigurationMetadata {
+        HnswConfigurationMetadata {
+            name: self.name().to_owned(),
+            hnsw_type: HnswType::Hnsw1536,
+        }
+    }
+
+    pub fn load<P1: AsRef<Path>, P2: AsRef<Path>>(
+        name: &str,
+        hnsw_root_directory: P1,
+        vector_directory: P2,
+    ) -> io::Result<Self> {
+        let hnsw_root_directory = hnsw_root_directory.as_ref();
+        let hnsw_path = IndexConfiguration::hnsw_path(name, hnsw_root_directory);
+        let meta_path = IndexConfiguration::meta_path(name, hnsw_root_directory);
+        let metadata: HnswConfigurationMetadata = serde_json::from_reader(File::open(meta_path)?)?;
+        assert_eq!(metadata.hnsw_type, HnswType::Hnsw1536);
+
+        let hnsw = Hnsw::load(hnsw_path)?;
+        let vector_name = &metadata.name;
+        let vectors = Vectors::load(vector_directory, vector_name)?;
+
+        Ok(Self::new(name.to_string(), hnsw, vectors))
+    }
+
+    pub fn store_hnsw<P: AsRef<Path>>(&self, hnsw_directory: P) -> io::Result<()> {
+        eprintln!("storing hnsw");
+        let hnsw_root_directory = hnsw_directory.as_ref();
+        let metadata = self.metadata();
+        let hnsw_path = IndexConfiguration::hnsw_path(&metadata.name, hnsw_root_directory);
+        let metadata_path = IndexConfiguration::meta_path(&metadata.name, hnsw_root_directory);
+        fs::create_dir_all(&hnsw_path)?;
+        serde_json::to_writer(File::create(metadata_path)?, &metadata)?;
+        self.hnsw().store(hnsw_path)?;
+
+        Ok(())
+    }
+}
+
 impl IndexConfiguration {
     fn hnsw_path(name: &str, hnsw_root_directory: &Path) -> PathBuf {
         hnsw_root_directory.join(name)
@@ -249,12 +290,16 @@ impl IndexConfiguration {
             HnswType::Hnsw1024 => {
                 Ok(Hnsw1024::load(name, hnsw_root_directory, vector_directory)?.into())
             }
+            HnswType::Hnsw1536 => {
+                Ok(Hnsw1536::load(name, hnsw_root_directory, vector_directory)?.into())
+            }
             HnswType::Quantized128x8 => todo!(),
         }
     }
     pub fn store_hnsw<P: AsRef<Path>>(&self, hnsw_directory: P) -> io::Result<()> {
         eprintln!("storing index configuration");
         match self {
+            IndexConfiguration::Hnsw1536(hnsw) => hnsw.store_hnsw(hnsw_directory),
             IndexConfiguration::Hnsw1024(hnsw) => hnsw.store_hnsw(hnsw_directory),
             IndexConfiguration::Pq1024x8(_pq) => todo!(),
         }

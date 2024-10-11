@@ -21,6 +21,7 @@ use crate::{
     compare::compare_record_distances,
     graph::{CompareGraph, FullGraph},
     model::EmbedderMetadata,
+    templates::ID_NAME,
 };
 
 #[derive(Parser)]

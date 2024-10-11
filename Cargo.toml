@@ -1,8 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "generate-random-vectors",
-  "hnsw-redux"
-, "improve", "index-vectors", "knn", "normalize", "search-collation", "test-recall", "time-load", "generate-vectors"]
+members = [ "generate-random-vectors","hnsw-redux", "improve", "index-vectors", "knn", "normalize", "search-collation", "test-recall", "time-load", "generate-vectors", "index-graph-field"]
 
 [profile.release]
 debug = true

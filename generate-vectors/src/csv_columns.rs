@@ -35,6 +35,10 @@ pub struct CsvColumnsCommand {
     /// column header. if not provided, first line is assumed to be the column header
     #[arg(long)]
     column_header: Option<Vec<String>>,
+
+    /// Print N template field examples and exit
+    #[arg(short, long)]
+    print_templates: Option<usize>,
 }
 
 impl CsvColumnsCommand {
@@ -66,6 +70,9 @@ impl CsvColumnsCommand {
             .context("I field is not in header")?;
         for (ix, record) in csv_reader.into_records().enumerate() {
             let record = record.with_context(|| format!("could not parse record {ix}"))?;
+            if templates_to_print.is_some() {
+                eprintln!("\n--------------------")
+            };
             for (field_index, template_name) in template_names.iter().enumerate() {
                 if template_name == ID_FIELD_NAME {
                     let id = record[id_field_idx].to_string();
@@ -82,7 +89,18 @@ impl CsvColumnsCommand {
                     let result = templates
                         .render(template_name, &json)
                         .context("could not render handlebars")?;
+                    if templates_to_print.is_some() {
+                        eprintln!("{result}");
+                    }
                     string_vecs[field_index].push(result);
+                }
+            }
+            // Decrement template number
+            if let Some(count) = templates_to_print {
+                if count == 0 {
+                    std::process::exit(0);
+                } else {
+                    templates_to_print = Some(count - 1);
                 }
             }
         }

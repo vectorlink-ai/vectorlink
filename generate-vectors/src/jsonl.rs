@@ -1,15 +1,9 @@
 //! index json lines using a template dir
 
-use std::{
-    fs::{self, File},
-    io::BufRead,
-    path::Path,
-};
+use std::{fs::File, io::BufRead, path::Path};
 
 use anyhow::Context;
 use clap::Parser;
-
-use handlebars::Handlebars;
 
 use crate::{
     graph::{FullGraph, Graph},

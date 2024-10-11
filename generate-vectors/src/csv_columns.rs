@@ -5,7 +5,6 @@ use std::{collections::HashMap, fs::File, path::Path};
 use anyhow::Context;
 use clap::Parser;
 use csv::StringRecord;
-use serde::{de::value::MapDeserializer, Deserialize};
 
 use crate::{
     graph::{FullGraph, Graph},
@@ -79,13 +78,12 @@ impl CsvColumnsCommand {
                     let id = record[id_field_idx].to_string();
                     string_vecs[field_index].push(id);
                 } else {
-                    let json: serde_json::Value = serde_json::Value::deserialize(
-                        MapDeserializer::<_, serde_json::Error>::new(
-                            headers
-                                .iter()
-                                .map(|s| s.to_string())
-                                .zip(record.into_iter()),
-                        ),
+                    let json: serde_json::Value = serde_json::to_value(
+                        headers
+                            .iter()
+                            .map(|s| s.to_string())
+                            .zip(record.into_iter())
+                            .collect::<HashMap<_, _>>(),
                     )?;
                     let result = templates
                         .render(template_name, &json)

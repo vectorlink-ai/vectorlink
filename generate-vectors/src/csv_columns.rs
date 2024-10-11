@@ -68,6 +68,7 @@ impl CsvColumnsCommand {
             .iter()
             .position(|x| *x == self.id_field)
             .context("I field is not in header")?;
+        let mut templates_to_print = self.print_templates;
         for (ix, record) in csv_reader.into_records().enumerate() {
             let record = record.with_context(|| format!("could not parse record {ix}"))?;
             if templates_to_print.is_some() {

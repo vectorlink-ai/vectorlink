@@ -10,7 +10,7 @@ use serde::{de::value::MapDeserializer, Deserialize};
 use crate::{
     graph::{FullGraph, Graph},
     model::EmbedderMetadata,
-    templates::{read_templates_from_dir, ID_NAME},
+    templates::{read_templates_from_dir, ID_FIELD_NAME},
     util::file_or_stdin_reader,
 };
 
@@ -67,7 +67,7 @@ impl CsvColumnsCommand {
         for (ix, record) in csv_reader.into_records().enumerate() {
             let record = record.with_context(|| format!("could not parse record {ix}"))?;
             for (field_index, template_name) in template_names.iter().enumerate() {
-                if template_name == ID_NAME {
+                if template_name == ID_FIELD_NAME {
                     let id = record[id_field_idx].to_string();
                     string_vecs[field_index].push(id);
                 } else {
@@ -92,7 +92,7 @@ impl CsvColumnsCommand {
         let mut fields = Vec::new();
         for (template_name, strings) in template_names.into_iter().zip(string_vecs) {
             let graph = Graph::new(strings.iter().map(|s| s.as_str()));
-            if template_name != ID_NAME {
+            if template_name != ID_FIELD_NAME {
                 let output_path = dir_path.join(format!("{}.vecs", template_name));
                 let writer = File::create(&output_path)
                     .with_context(|| format!("could not create output file {output_path:?}"))?;
@@ -104,7 +104,7 @@ impl CsvColumnsCommand {
         let output_path = dir_path.join("aggregated.graph");
         let writer = File::create(&output_path)
             .with_context(|| format!("could not create output file {output_path:?}"))?;
-        let full_graph = FullGraph::new(&self.id_field, fields);
+        let full_graph = FullGraph::new(fields);
         serde_json::to_writer(&writer, &full_graph)?;
         Ok(())
     }

@@ -14,7 +14,7 @@ use handlebars::Handlebars;
 use crate::{
     graph::{FullGraph, Graph},
     model::EmbedderMetadata,
-    templates::{read_templates_from_dir, ID_NAME},
+    templates::{read_templates_from_dir, ID_FIELD_NAME},
     util::file_or_stdin_reader,
 };
 
@@ -52,7 +52,7 @@ impl JsonLinesCommand {
             let json: serde_json::Value =
                 serde_json::from_str(&line).context("could not parse json line")?;
             for (field_index, template_name) in template_names.iter().enumerate() {
-                if template_name == ID_NAME {
+                if template_name == ID_FIELD_NAME {
                     let id = json
                         .get(&self.id_field)
                         .context("id field missing from json")?
@@ -74,7 +74,7 @@ impl JsonLinesCommand {
         let mut fields = Vec::new();
         for (template_name, strings) in template_names.into_iter().zip(string_vecs) {
             let graph = Graph::new(strings.iter().map(|s| s.as_str()));
-            if template_name != ID_NAME {
+            if template_name != ID_FIELD_NAME {
                 let output_path = dir_path.join(format!("{}.vecs", template_name));
                 let writer = File::create(&output_path)
                     .with_context(|| format!("could not create output file {output_path:?}"))?;
@@ -86,7 +86,7 @@ impl JsonLinesCommand {
         let output_path = dir_path.join("disaggregated.graph");
         let writer = File::create(&output_path)
             .with_context(|| format!("could not create output file {output_path:?}"))?;
-        let full_graph = FullGraph::new(&self.id_field, fields);
+        let full_graph = FullGraph::new(fields);
         serde_json::to_writer(&writer, &full_graph)?;
         Ok(())
     }

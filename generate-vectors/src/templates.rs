@@ -3,12 +3,12 @@ use std::{fs, path::Path};
 use anyhow::Context;
 use handlebars::Handlebars;
 
-pub const ID_NAME: &str = "__ID_FIELD__";
+pub const ID_FIELD_NAME: &str = "__ID_FIELD__";
 
 pub fn read_templates_from_dir<'a, P: AsRef<Path>>(
     template_dir: P,
 ) -> Result<(Vec<String>, Handlebars<'a>), anyhow::Error> {
-    let mut template_names = vec![ID_NAME.to_string()];
+    let mut template_names = vec![ID_FIELD_NAME.to_string()];
     let mut templates = Handlebars::new();
     for entry in fs::read_dir(template_dir).context("could not read template dir")? {
         let entry = entry.context("could not read entry in template dir")?;

@@ -1,20 +1,19 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
+use crate::templates::ID_FIELD_NAME;
 use either::Either;
 use hnsw_redux::vectors::Vectors;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FullGraph {
-    id_field: String,
     fields: HashMap<String, Graph>,
 }
 
 impl FullGraph {
-    pub fn new(id_field: &str, fields: Vec<(String, Graph)>) -> Self {
-        let id_field = id_field.to_string();
+    pub fn new(fields: Vec<(String, Graph)>) -> Self {
         let fields: HashMap<String, Graph> = fields.into_iter().collect();
-        Self { id_field, fields }
+        Self { fields }
     }
 
     pub fn get(&self, field: &str) -> Option<&Graph> {
@@ -26,13 +25,27 @@ impl FullGraph {
     }
 
     pub fn record_id_field_value(&self, id: u32) -> &str {
-        self.fields[&self.id_field]
+        self.fields[ID_FIELD_NAME]
             .record_id_to_value(id)
             .expect("Missing id field")
     }
 
     pub fn record_count(&self) -> usize {
-        self.fields[&self.id_field].values.len()
+        self.fields[ID_FIELD_NAME].values.len()
+    }
+
+    pub fn load_vecs<P: AsRef<Path>>(&self, vector_path: P) -> HashMap<String, Vectors> {
+        self.fields()
+            .iter()
+            .filter(|name| **name != ID_FIELD_NAME)
+            .map(|name| {
+                (
+                    name.to_string(),
+                    Vectors::load(&vector_path, name)
+                        .unwrap_or_else(|_| panic!("Unable to load vector file for {name}")),
+                )
+            })
+            .collect()
     }
 }
 

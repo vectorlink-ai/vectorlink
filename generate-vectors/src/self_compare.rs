@@ -27,10 +27,6 @@ pub struct SelfCompareCommand {
     /// Field on which to perform the filter
     filter_field: String,
 
-    #[arg(short, long)]
-    /// Field on which to return matches
-    id_field: String,
-
     #[arg(short = 't', long)]
     /// The initial filter threshold to determine what to test
     initial_threshold: f32,
@@ -124,9 +120,6 @@ impl SelfCompareCommand {
         let hnsw: IndexConfiguration =
             IndexConfiguration::load(&self.filter_field, &hnsw_root_directory, graph_dir_path)?;
 
-        let vectors = Vectors::load(graph_dir_path, &self.filter_field)
-            .context("Unable to load vector file")?;
-
         let field_graph = graph.get(&self.filter_field).expect("No field graph found");
 
         // Source Value id is position, and results are target value ids.
@@ -159,21 +152,7 @@ impl SelfCompareCommand {
             })
             .collect();
 
-        let id_graph = graph
-            .get(&self.id_field)
-            .expect("No target field graph found");
-
-        let field_vecs: HashMap<String, Vectors> = graph
-            .fields()
-            .iter()
-            .map(|name| {
-                (
-                    name.to_string(),
-                    Vectors::load(graph_dir_path, name)
-                        .unwrap_or_else(|_| panic!("Unable to load vector file for {name}")),
-                )
-            })
-            .collect();
+        let field_vecs: HashMap<String, Vectors> = graph.load_vecs(graph_dir_path);
         let compare_graph = CompareGraph::new(&graph, field_vecs);
 
         let mut wtr = Writer::from_path(&self.output_file)?;
@@ -187,8 +166,8 @@ impl SelfCompareCommand {
                     let probability =
                         self_compare_records(&compare_graph, source, *target, &weights);
                     if probability > self.match_threshold {
-                        let source_id = id_graph.record_id_to_value(source).unwrap_or("");
-                        let target_id = id_graph.record_id_to_value(*target).unwrap_or("");
+                        let source_id = graph.record_id_field_value(source);
+                        let target_id = graph.record_id_field_value(*target);
                         wtr.write_record([source_id, target_id, &format!("{}", probability)])?;
                     }
                 }

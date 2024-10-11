@@ -21,7 +21,6 @@ use crate::{
     compare::compare_record_distances,
     graph::{CompareGraph, FullGraph},
     model::EmbedderMetadata,
-    templates::ID_NAME,
 };
 
 #[derive(Parser)]
@@ -41,10 +40,6 @@ pub struct WeightsCommand {
     #[arg(short, long, num_args = 1..)]
     /// Field on which to perform the filter
     comparison_fields: Vec<String>,
-
-    #[arg(short, long)]
-    /// Field on which to return matches
-    id_field: String,
 
     #[arg(short, long)]
     /// The initial filter threshold to determine what to test
@@ -270,28 +265,8 @@ impl WeightsCommand {
             })
             .collect();
 
-        let source_vecs: HashMap<String, Vectors> = source_graph
-            .fields()
-            .iter()
-            .map(|name| {
-                (
-                    name.to_string(),
-                    Vectors::load(source_graph_dir_path, name)
-                        .unwrap_or_else(|_| panic!("Unable to load vector file for {name}")),
-                )
-            })
-            .collect();
-        let target_vecs: HashMap<String, Vectors> = target_graph
-            .fields()
-            .iter()
-            .map(|name| {
-                (
-                    name.to_string(),
-                    Vectors::load(target_graph_dir_path, name)
-                        .unwrap_or_else(|_| panic!("Unable to load vector file for {name}")),
-                )
-            })
-            .collect();
+        let source_vecs: HashMap<String, Vectors> = source_graph.load_vecs(source_graph_dir_path);
+        let target_vecs: HashMap<String, Vectors> = target_graph.load_vecs(target_graph_dir_path);
 
         let answers_file = File::open(&self.answers_file).context("Unable to open answers file")?;
         let mut rdr = csv::Reader::from_reader(answers_file);

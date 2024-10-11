@@ -184,36 +184,8 @@ impl CompareCommand {
             })
             .collect();
 
-        let target_id_graph = target_graph
-            .get(&self.id_field)
-            .expect("No target field graph found");
-
-        let source_id_graph = source_graph
-            .get(&self.id_field)
-            .expect("No target field graph found");
-
-        let source_vecs: HashMap<String, Vectors> = source_graph
-            .fields()
-            .iter()
-            .map(|name| {
-                (
-                    name.to_string(),
-                    Vectors::load(source_graph_dir_path, name)
-                        .unwrap_or_else(|_| panic!("Unable to load vector file for {name}")),
-                )
-            })
-            .collect();
-        let target_vecs: HashMap<String, Vectors> = target_graph
-            .fields()
-            .iter()
-            .map(|name| {
-                (
-                    name.to_string(),
-                    Vectors::load(target_graph_dir_path, name)
-                        .unwrap_or_else(|_| panic!("Unable to load vector file for {name}")),
-                )
-            })
-            .collect();
+        let source_vecs: HashMap<String, Vectors> = source_graph.load_vecs(source_graph_dir_path);
+        let target_vecs: HashMap<String, Vectors> = target_graph.load_vecs(target_graph_dir_path);
         let source_compare_graph = CompareGraph::new(&source_graph, source_vecs);
         let target_compare_graph = CompareGraph::new(&target_graph, target_vecs);
 
@@ -230,8 +202,8 @@ impl CompareCommand {
                         &weights,
                     );
                     if probability > self.match_threshold {
-                        let source_id = source_id_graph.record_id_to_value(source).unwrap_or("");
-                        let target_id = target_id_graph.record_id_to_value(*target).unwrap_or("");
+                        let source_id = source_graph.record_id_field_value(source);
+                        let target_id = target_graph.record_id_field_value(*target);
                         wtr.write_record([source_id, target_id, &format!("{}", probability)])?;
                     }
                 }

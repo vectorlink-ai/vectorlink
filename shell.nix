@@ -10,6 +10,6 @@ mkShell {
   ];
 
   shellHook = ''
-export RUSTFLAGS="-C target-feature=+avx2,+f16c,+fma"
+export RUSTFLAGS="-C target-feature=+avx2,+f16c,+fma,+aes,+sse2"
 '';
 }

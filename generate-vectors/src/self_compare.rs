@@ -14,7 +14,7 @@ use rayon::prelude::*;
 use crate::{
     graph::{CompareGraph, FullGraph},
     model::EmbedderMetadata,
-    weights::sigmoid,
+    train::sigmoid,
 };
 
 #[derive(Parser)]

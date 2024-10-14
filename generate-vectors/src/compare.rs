@@ -5,9 +5,7 @@ use anyhow::Context;
 use clap::Parser;
 use csv::Writer;
 use hnsw_redux::{
-    comparator::CosineDistance1536,
     index::{Index, IndexConfiguration},
-    layer::VectorComparator,
     params::SearchParams,
     vectors::{Vector, Vectors},
 };
@@ -16,7 +14,7 @@ use nalgebra::{DMatrix, DVector};
 use crate::{
     graph::{CompareGraph, FullGraph},
     model::EmbedderMetadata,
-    weights::sigmoid,
+    train::{compare_record_distances, sigmoid},
 };
 
 #[derive(Parser)]
@@ -52,47 +50,6 @@ pub struct CompareCommand {
     /// Path to output csv
     #[arg(short, long)]
     weights: String,
-}
-
-pub fn compare_record_distances(
-    source: &CompareGraph,
-    target: &CompareGraph,
-    source_record: u32,
-    target_record: u32,
-    weights: &Vec<(String, f32)>,
-) -> Vec<f32> {
-    let mut results: Vec<f32> = Vec::with_capacity(weights.len());
-    for (field, _) in weights {
-        if field == "__INTERCEPT__" {
-            results.push(1.0);
-            continue;
-        }
-        let source_value_id = source
-            .graph
-            .get(field)
-            .expect("field missing on source graph")
-            .record_id_to_value_id(source_record);
-        let target_value_id = target
-            .graph
-            .get(field)
-            .expect("field missing on source graph")
-            .record_id_to_value_id(target_record);
-        if let (Some(source_vector_id), Some(target_vector_id)) = (source_value_id, target_value_id)
-        {
-            let source_vec = &source.vecs[field][source_vector_id as usize];
-            let target_vec = &target.vecs[field][target_vector_id as usize];
-            let dummy = Vectors::empty(6144);
-            let comparator = CosineDistance1536::new(&dummy);
-            let distance = comparator.compare_vec_unstored(source_vec, target_vec);
-            results.push(distance);
-        } else {
-            results.push(0.5); // NOTE: This may be too unprincipled
-        }
-    }
-    if results.is_empty() {
-        panic!("No overlap between records - incomparable");
-    }
-    results
 }
 
 pub fn compare_records(

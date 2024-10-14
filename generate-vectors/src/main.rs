@@ -9,6 +9,7 @@ use jsonl::JsonLinesCommand;
 use lines::LinesCommand;
 use model::EmbedderMetadata;
 use self_compare::SelfCompareCommand;
+use self_weights::SelfWeightsCommand;
 use weights::WeightsCommand;
 
 mod compare;
@@ -19,7 +20,9 @@ mod lines;
 mod model;
 mod openai;
 mod self_compare;
+mod self_weights;
 mod templates;
+mod train;
 mod util;
 mod weights;
 
@@ -47,6 +50,8 @@ enum Subcommand {
     SelfCompare(SelfCompareCommand),
     /// Search for weights
     FindWeights(WeightsCommand),
+    /// Search for weights against the same index
+    SelfFindWeights(SelfWeightsCommand),
 }
 
 #[tokio::main]
@@ -66,5 +71,6 @@ async fn main() -> Result<(), anyhow::Error> {
         Subcommand::Compare(cc) => cc.execute(&config).await,
         Subcommand::SelfCompare(sc) => sc.execute(&config).await,
         Subcommand::FindWeights(fc) => fc.execute(&config).await,
+        Subcommand::SelfFindWeights(sfc) => sfc.execute(&config).await,
     }
 }

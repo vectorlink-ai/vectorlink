@@ -21,7 +21,7 @@ use crate::{
 
 #[derive(Serialize, Deserialize)]
 pub struct VectorsMetadata {
-    vector_byte_size: usize,
+    pub vector_byte_size: usize,
 }
 
 impl Vectors {

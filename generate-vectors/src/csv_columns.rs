@@ -113,6 +113,11 @@ impl CsvColumnsCommand {
                 let output_path = dir_path.join(format!("{}.vecs", template_name));
                 let writer = File::create(&output_path)
                     .with_context(|| format!("could not create output file {output_path:?}"))?;
+                let vmd = VectorsMetadata {
+                    vector_byte_size: config.model.embedding_byte_size(),
+                };
+                let metadata_path = dir_path.join(format!("{}.metadata.json", template_name));
+                serde_json::to_writer(File::create(metadata_path)?, &vmd)?;
                 config.embeddings_for_into(&graph.values, writer).await?;
             }
             fields.push((template_name, graph));

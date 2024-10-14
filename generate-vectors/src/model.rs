@@ -30,7 +30,7 @@ impl SupportedModel {
 
 #[derive(Deserialize, Serialize)]
 pub struct EmbedderMetadata {
-    model: SupportedModel,
+    pub model: SupportedModel,
     #[serde(flatten)]
     extra_fields: HashMap<String, Value>,
 }

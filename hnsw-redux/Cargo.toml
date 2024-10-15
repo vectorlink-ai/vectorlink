@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 enum_dispatch = "0.3.13"
+find_peaks = "0.1.5"
 itertools = "0.13.0"
 libc = "0.2.159"
 rand = "0.8.5"

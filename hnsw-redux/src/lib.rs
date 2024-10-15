@@ -17,6 +17,7 @@ pub mod test_util;
 mod util;
 pub mod vecmath;
 pub mod vectors;
+pub mod peaks;
 
 #[cfg(test)]
 mod tests {}

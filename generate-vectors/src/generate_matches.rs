@@ -19,17 +19,25 @@ pub struct GenerateMatchesCommand {
     #[arg(short, long)]
     target_graph_dir: String,
 
+    /// Original target record file (Either CSV or JSON-Lines)
+    #[arg(short, long)]
+    target_record_file: String,
+
+    /// Line index for target record file
+    #[arg(short, long)]
+    target_record_file_index: String,
+
     /// The unindexed graph from which to search
     #[arg(short, long)]
     source_graph_dir: String,
 
-    /// Original record file (Either CSV or JSON-Lines)
+    /// Original source record file (Either CSV or JSON-Lines)
     #[arg(short, long)]
-    record_file: String,
+    source_record_file: String,
 
-    /// Line index for record file
-    #[arg(short('i'), long)]
-    record_file_index: String,
+    /// Line index for source record file
+    #[arg(short, long)]
+    source_record_file_index: String,
 
     /// Line index for record file
     #[arg(short, long, default_value_t = 300)]
@@ -94,16 +102,23 @@ impl GenerateMatchesCommand {
             .get(&self.filter_field)
             .expect("No target field graph found");
 
+        let target_record_file_path = Path::new(&self.target_record_file);
+        let target_record_file = File::open(target_record_file_path)
+            .context("Could not open the original target records file")?;
+        let target_record_index_file_path = Path::new(&self.target_record_file_index);
+        let target_record_index_file = File::open(target_record_index_file_path)
+            .context("Could not open the source index file for records")?;
+
         let source_field_graph = source_graph
             .get(&self.filter_field)
             .expect("No target field graph found");
 
-        let record_file_path = Path::new(&self.record_file);
-        let record_file =
-            File::open(record_file_path).context("Could not open the original records file")?;
-        let record_index_file_path = Path::new(&self.record_file_index);
-        let record_index_file = File::open(record_index_file_path)
-            .context("Could not open the index file for records")?;
+        let source_record_file_path = Path::new(&self.source_record_file);
+        let source_record_file = File::open(source_record_file_path)
+            .context("Could not open the original source records file")?;
+        let source_record_index_file_path = Path::new(&self.source_record_file_index);
+        let source_record_index_file = File::open(source_record_index_file_path)
+            .context("Could not open the source index file for records")?;
 
         let find_peaks_params = FindPeaksParams::default();
         let peaks = hnsw.find_distance_transitions(find_peaks_params);
@@ -123,33 +138,42 @@ impl GenerateMatchesCommand {
         const TOTAL_SEARCH_SIZE: usize = 10_000;
 
         let knn_results: Vec<_> = hnsw.knn(k).take_any(TOTAL_SEARCH_SIZE).collect();
-        for (left_vector_id, neighbors) in hnsw.knn(k) {
-            let i = neighbors.partition_point(|(_, d)| d < first_peak);
+        for (target_vector_id, neighbors) in knn_results {
+            eprintln!("Evaluating result");
+            let i = neighbors.partition_point(|(_, d)| *d < first_peak);
             // Let's take only candidates in which there is a transition
             if i != 0 && i != neighbors.len() {
-                let (right_vector_id, distance) = if match_count > non_match_count {
+                let (source_vector_id, distance) = if match_count > non_match_count {
                     // should be bigger than i, how do we calculate...
                     neighbors[i]
                 } else {
                     neighbors[0]
                 };
-                let left = lookup_record(left_vector_id, &record_file, &record_index_file)?;
-                let right = lookup_record(right_vector_id, &record_file, &record_index_file)?;
+                let target_record = lookup_record(
+                    target_vector_id as usize,
+                    &target_record_file,
+                    &target_record_index_file,
+                )?;
+                let source_record = lookup_record(
+                    source_vector_id as usize,
+                    &source_record_file,
+                    &source_record_index_file,
+                )?;
                 println!("Are the following records referring to the same entity?:");
-                println!("1. {left}");
-                println!("2. {right}");
+                println!("1. {target_record}");
+                println!("2. {source_record}");
                 let matches = read_y_n().context("Could not read input from user!")?;
                 if matches {
-                    let source_id = source_graph.record_id_field_value(left_vector_id);
-                    let target_id = target_graph.record_id_field_value(right_vector_id);
-                    csv_wtr.write_record(&[source_id, target_id]);
+                    let source_id = source_graph.record_id_field_value(target_vector_id as u32);
+                    let target_id = target_graph.record_id_field_value(source_vector_id as u32);
+                    csv_wtr.write_record(&[source_id, target_id])?;
                     match_count += 1;
                 } else {
                     non_match_count += 1;
                 }
             }
 
-            if match_count + non_match_count > &self.match_target_count {
+            if match_count + non_match_count > self.match_target_count {
                 break;
             }
         }

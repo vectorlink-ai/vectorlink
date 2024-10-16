@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    hash::{DefaultHasher, Hasher},
-    path::Path,
-};
+use std::{collections::HashMap, path::Path};
 
 use crate::templates::ID_FIELD_NAME;
 use either::Either;
@@ -69,13 +65,8 @@ impl Graph {
         let mut pairs: Vec<(u32, &str)> = iter.enumerate().map(|(i, s)| (i as u32, s)).collect();
         // ensure ordering is random
         pairs.sort_by(|elt1, elt2| {
-            let mut h1 = DefaultHasher::new();
-            h1.write(elt1.1.as_bytes());
-            let h1 = h1.finish();
-            let mut h2 = DefaultHasher::new();
-            h2.write(elt2.1.as_bytes());
-            let h2 = h2.finish();
-            h1.cmp(&h2)
+            gxhash::gxhash64(elt1.1.as_bytes(), 0x533D)
+                .cmp(&gxhash::gxhash64(elt2.1.as_bytes(), 0x533D))
         });
         let mut values: Vec<String> = Vec::new();
         let record_to_value: HashMap<u32, u32> = pairs

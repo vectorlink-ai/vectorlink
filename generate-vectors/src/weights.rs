@@ -49,6 +49,10 @@ pub struct WeightsCommand {
     /// Correct answers in CSV organized as: source,target
     answers_file: String,
 
+    #[arg(short, long)]
+    /// CSV with all source ids which are relevant to the answer file
+    non_matches_file: Option<String>,
+
     #[arg(short, long, default_value_t = 0.33)]
     proportion_for_test: f32,
 }
@@ -88,38 +92,80 @@ impl WeightsCommand {
             .get(&self.filter_field)
             .expect("No target field graph found");
 
-        // Source Value id is position, and results are target value ids.
-        let results: Vec<Vec<u32>> = source_vectors
-            .iter()
-            .map(|query_vec| {
-                hnsw.search(Vector::Slice(query_vec), &SearchParams::default())
-                    .iter()
-                    .filter_map(|(target_value_id, distance)| {
-                        if distance < self.initial_threshold {
-                            Some(target_value_id)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
+        /*
+        let domain : Option<HashSet<String>> = self.domain_file.map(|domain_file| {
+            let domain_file_path = Path::new(&domain_file);
+            let mut csv_reader = csv::ReaderBuilder::new()
+                .has_headers(true)
+                .from_reader(reader);
+            let domain = HashSet::new();
+            for record in csv_reader.into_records() {
+                domain.
+            }
+        });
+         */
 
-        let candidates_for_compare: Vec<(Vec<u32>, Vec<u32>)> = results
-            .iter()
-            .enumerate()
-            .map(|(source_value_id, target_value_ids)| {
-                let all_target_record_ids: Vec<u32> = target_value_ids
-                    .iter()
-                    .flat_map(|id| target_field_graph.value_id_to_record_ids(*id))
-                    .copied()
-                    .collect();
-                let all_source_record_ids: Vec<u32> = source_field_graph
-                    .value_id_to_record_ids(source_value_id as u32)
-                    .to_vec();
-                (all_source_record_ids, all_target_record_ids)
-            })
-            .collect();
+        let candidates_for_compare: Vec<(Vec<u32>, Vec<u32>)> = if let Some(non_matches_file) =
+            self.non_matches_file.as_ref()
+        {
+            let non_matches_file =
+                File::open(non_matches_file).context("Unable to open non_matches file")?;
+            let mut rdr = csv::Reader::from_reader(non_matches_file);
+            let mut non_matches: Vec<(Vec<u32>, Vec<u32>)> = Vec::new();
+            let source_id_map: HashMap<&str, u32> = source_graph
+                .id_graph()
+                .values
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.as_str(), i as u32))
+                .collect();
+            let target_id_map: HashMap<&str, u32> = target_graph
+                .id_graph()
+                .values
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.as_str(), i as u32))
+                .collect();
+            for result in rdr.records() {
+                let record = result.expect("Unable to parse csv field");
+                let source_id = source_id_map[&record[0]];
+                let target_id = source_id_map[&record[1]];
+                let source_record_ids = source_graph.id_graph().value_id_to_record_ids(source_id);
+                let target_record_ids = target_graph.id_graph().value_id_to_record_ids(target_id);
+                non_matches.push((source_record_ids.to_vec(), target_record_ids.to_vec()));
+            }
+            non_matches
+        } else {
+            // Source Value id is position, and results are target value ids.
+            let results: Vec<(Vec<u32>, Vec<u32>)> = source_vectors
+                .iter()
+                .map(|query_vec| {
+                    hnsw.search(Vector::Slice(query_vec), &SearchParams::default())
+                        .iter()
+                        .filter_map(|(target_value_id, distance)| {
+                            if distance < self.initial_threshold {
+                                Some(target_value_id)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<u32>>()
+                })
+                .enumerate()
+                .map(|(source_value_id, target_value_ids)| {
+                    let all_target_record_ids: Vec<u32> = target_value_ids
+                        .iter()
+                        .flat_map(|id| target_field_graph.value_id_to_record_ids(*id))
+                        .copied()
+                        .collect();
+                    let all_source_record_ids: Vec<u32> = source_field_graph
+                        .value_id_to_record_ids(source_value_id as u32)
+                        .to_vec();
+                    (all_source_record_ids, all_target_record_ids)
+                })
+                .collect();
+            results
+        };
 
         let source_vecs: HashMap<String, Vectors> = source_graph.load_vecs(source_graph_dir_path);
         let target_vecs: HashMap<String, Vectors> = target_graph.load_vecs(target_graph_dir_path);

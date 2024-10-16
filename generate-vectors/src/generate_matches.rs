@@ -48,8 +48,12 @@ pub struct GenerateMatchesCommand {
     filter_field: String,
 
     #[arg(short, long)]
-    /// Correct answers output to CSV organized as: source,target
+    /// Correct answers output to CSV organized as: source, target
     answers_file: String,
+
+    #[arg(short, long)]
+    /// File containing non matches: source, target
+    non_matches_file: String,
 }
 
 fn read_y_n() -> Result<bool, anyhow::Error> {
@@ -137,27 +141,29 @@ impl GenerateMatchesCommand {
             peaks[0].0
         };
 
-        let mut csv_wtr = Writer::from_path(&self.answers_file)?;
-        csv_wtr.write_record(["source_id", "target_id"])?;
+        let mut answers_csv_wtr = Writer::from_path(&self.answers_file)?;
+        answers_csv_wtr.write_record(["source_id", "target_id"])?;
+
+        let mut non_matches_csv_wtr = Writer::from_path(&self.non_matches_file)?;
+        non_matches_csv_wtr.write_record(["source_id", "target_id"])?;
 
         let mut total_records = 0;
         let k = 20;
         let mut non_match_count = 0;
         let mut match_count = 0;
-        const TOTAL_SEARCH_SIZE: usize = 10_000;
 
-        let neighbor_results: Vec<(u32, Vec<(u32, f32)>)> = source_vectors
-            .iter()
-            .enumerate()
-            .map(|(source_vector_id, query_vec)| {
-                (
-                    source_vector_id as u32,
-                    hnsw.search(Vector::Slice(query_vec), &SearchParams::default())
-                        .iter()
-                        .collect(),
-                )
-            })
-            .collect();
+        let neighbor_results =
+            source_vectors
+                .iter()
+                .enumerate()
+                .map(|(source_vector_id, query_vec)| {
+                    (
+                        source_vector_id as u32,
+                        hnsw.search(Vector::Slice(query_vec), &SearchParams::default())
+                            .iter()
+                            .collect::<Vec<_>>(),
+                    )
+                });
 
         for (source_vector_id, neighbors) in neighbor_results {
             eprintln!("Evaluating result with first peak at {threshold_distance}");
@@ -188,45 +194,14 @@ impl GenerateMatchesCommand {
                         println!("Are the following records referring to the same entity?:");
                         println!("1. {target_record}");
                         println!("2. {source_record}");
-
-                        /*
-                        let target_record_previous = lookup_record(
-                            target_vector_id.saturating_sub(1) as usize,
-                            &target_record_file,
-                            &target_record_index_file,
-                        )?;
-                        let source_record_previous = lookup_record(
-                            source_vector_id.saturating_sub(1) as usize,
-                            &source_record_file,
-                            &source_record_index_file,
-                        )?;
-
-                        let target_record_subsequent = lookup_record(
-                            (target_vector_id + 1) as usize,
-                            &target_record_file,
-                            &target_record_index_file,
-                        )?;
-                        let source_record_subsequent = lookup_record(
-                            (source_vector_id + 1) as usize,
-                            &source_record_file,
-                            &source_record_index_file,
-                        )?;
-
-                        println!("1. {target_record_previous}");
-                        println!("2. {source_record_previous}");
-
-                        println!("1. {target_record_subsequent}");
-                        println!("2. {source_record_subsequent}");
-                                 */
                         let matches = read_y_n().context("Could not read input from user!")?;
+                        let source_id = source_graph.record_id_field_value(source_vector_id as u32);
+                        let target_id = target_graph.record_id_field_value(target_vector_id as u32);
                         if matches {
-                            let source_id =
-                                source_graph.record_id_field_value(source_vector_id as u32);
-                            let target_id =
-                                target_graph.record_id_field_value(target_vector_id as u32);
-                            csv_wtr.write_record(&[source_id, target_id])?;
+                            answers_csv_wtr.write_record(&[source_id, target_id])?;
                             match_count += 1;
                         } else {
+                            non_matches_csv_wtr.write_record(&[source_id, target_id])?;
                             non_match_count += 1;
                         }
                     }

@@ -28,14 +28,18 @@ impl FullGraph {
         self.fields.keys().map(|s| s.as_str()).collect()
     }
 
+    pub fn id_graph(&self) -> &Graph {
+        &self.fields[ID_FIELD_NAME]
+    }
+
     pub fn record_id_field_value(&self, id: u32) -> &str {
-        self.fields[ID_FIELD_NAME]
+        self.id_graph()
             .record_id_to_value(id)
             .expect("Missing id field")
     }
 
     pub fn record_count(&self) -> usize {
-        self.fields[ID_FIELD_NAME].values.len()
+        self.id_graph().values.len()
     }
 
     pub fn load_vecs<P: AsRef<Path>>(&self, vector_path: P) -> HashMap<String, Vectors> {

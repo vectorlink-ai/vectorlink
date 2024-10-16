@@ -1,11 +1,15 @@
 #![feature(iterator_try_collect)]
+#![feature(bufread_skip_until)]
+
 use std::fs::File;
 
 use anyhow::Context;
 use clap::Parser;
 use compare::CompareCommand;
 use csv_columns::CsvColumnsCommand;
+use generate_matches::GenerateMatchesCommand;
 use jsonl::JsonLinesCommand;
+use line_index::LineIndexCommand;
 use lines::LinesCommand;
 use model::EmbedderMetadata;
 use self_compare::SelfCompareCommand;
@@ -14,8 +18,10 @@ use weights::WeightsCommand;
 
 mod compare;
 mod csv_columns;
+mod generate_matches;
 mod graph;
 mod jsonl;
+mod line_index;
 mod lines;
 mod model;
 mod openai;
@@ -52,6 +58,10 @@ enum Subcommand {
     FindWeights(WeightsCommand),
     /// Search for weights against the same index
     SelfFindWeights(SelfWeightsCommand),
+    /// Generates a match set
+    GenerateMatches(GenerateMatchesCommand),
+    /// Line Index Record file (CSV or JSON-Lines)
+    LineIndex(LineIndexCommand),
 }
 
 #[tokio::main]
@@ -72,5 +82,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Subcommand::SelfCompare(sc) => sc.execute(&config).await,
         Subcommand::FindWeights(fc) => fc.execute(&config).await,
         Subcommand::SelfFindWeights(sfc) => sfc.execute(&config).await,
+        Subcommand::GenerateMatches(gmc) => gmc.execute(&config).await,
+        Subcommand::LineIndex(lic) => lic.execute(&config).await,
     }
 }

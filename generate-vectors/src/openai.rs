@@ -354,3 +354,87 @@ pub async fn embeddings_for_output(
 
     Ok(())
 }
+
+pub struct OpenAIDecider {
+    api_key: String,
+    entity_description: String,
+}
+
+impl OpenAIDecider {
+    pub fn new(api_key: String, entity_description: String) -> Self {
+        Self {
+            api_key,
+            entity_description,
+        }
+    }
+
+    pub async fn decide(&self, e1: &str, e2: &str) -> Result<bool, anyhow::Error> {
+        lazy_static! {
+            static ref ENDPOINT: Url = Url::parse("https://api.openai.com/v1/completions").unwrap();
+            static ref CLIENT: Client = Client::new();
+        }
+
+        let messages = vec![
+            Message {
+                role: "system".to_string(),
+                content: format!("You are a classifier deciding if two entities are a match or not. These entities are about the following:
+{}
+Tell me whether the following two records are referring to the same entity or a different entity using a chain of reasoning followed by a single yes or no answer on a single line.
+", self.entity_description),
+            },
+            Message {
+                role: "user".to_string(),
+                content: format!("1: {e1}
+2: {e2}"),
+            },
+        ];
+
+        let request = CompletionRequest {
+            messages,
+            model: "gpt-4o".to_string(),
+        };
+        let mut req = Request::new(Method::POST, ENDPOINT.clone());
+        let headers = req.headers_mut();
+        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+        headers.insert(
+            "Authorization",
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap(),
+        );
+        let body_vec = serde_json::to_vec(&request).unwrap();
+        let body: Body = body_vec.into();
+        *req.body_mut() = Some(body);
+
+        let (status, bytes) = execute_request_and_get_bytes(&CLIENT, req).await?;
+
+        let response: PartialCompletionResponse =
+            serde_json::from_slice(&bytes).context("could not parse openai completion response")?;
+
+        let message = &response.messages[0];
+        let last_line = message.content.lines().last().unwrap().to_lowercase();
+        Ok(match last_line.as_str() {
+            "yes" => true,
+            "no" => false,
+            _ => {
+                eprintln!("got a completion that was not a yes or no: {last_line}");
+                false
+            } // oops
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Message {
+    role: String,
+    content: String,
+}
+
+#[derive(Serialize)]
+struct CompletionRequest {
+    model: String,
+    messages: Vec<Message>,
+}
+
+#[derive(Deserialize)]
+struct PartialCompletionResponse {
+    messages: Vec<Message>,
+}

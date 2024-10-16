@@ -49,19 +49,20 @@ impl EmbedderMetadata {
 
         writer.write_all(&data[..]).context("could not write data")
     }
+    pub fn openai_api_key(&self) -> Result<&str, anyhow::Error> {
+        self.extra_fields
+            .get("api_key")
+            .context("api_key was not present in metadata")?
+            .as_str()
+            .context("api_key was not a string")
+    }
     pub async fn embeddings_for(
         &self,
         strings: &[String],
         output: &mut [u8],
     ) -> Result<(), anyhow::Error> {
         // only openai supported so far, so we always need the api key.
-        let api_key = self
-            .extra_fields
-            .get("api_key")
-            .context("api_key was not present in metadata")?
-            .as_str()
-            .context("api_key was not a string")?
-            .to_owned();
+        let api_key = self.openai_api_key()?.to_owned();
         let model = match self.model {
             SupportedModel::OpenaiAda2 => OpenAIModelType::Ada2,
             SupportedModel::OpenaiSmall3 => OpenAIModelType::Small3,

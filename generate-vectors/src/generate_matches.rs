@@ -11,7 +11,9 @@ use hnsw_redux::{
     vectors::{Vector, Vectors},
 };
 
-use crate::{graph::FullGraph, line_index::lookup_record, model::EmbedderMetadata};
+use crate::{
+    graph::FullGraph, line_index::lookup_record, model::EmbedderMetadata, openai::OpenAIDecider,
+};
 
 #[derive(Parser)]
 pub struct GenerateMatchesCommand {
@@ -54,6 +56,10 @@ pub struct GenerateMatchesCommand {
     #[arg(short, long)]
     /// File containing non matches: source, target
     non_matches_file: String,
+
+    #[arg(long)]
+    /// Use openAI for bootstrap
+    entity_description: Option<String>,
 }
 
 fn read_y_n() -> Result<bool, anyhow::Error> {
@@ -75,8 +81,31 @@ fn read_y_n() -> Result<bool, anyhow::Error> {
     }
 }
 
+enum Decider {
+    Interactive,
+    OpenAI(OpenAIDecider),
+}
+
+impl Decider {
+    async fn decide(&self, e1: &str, e2: &str) -> Result<bool, anyhow::Error> {
+        match self {
+            Decider::Interactive => todo!(),
+            Decider::OpenAI(d) => todo!(),
+        }
+    }
+}
+
 impl GenerateMatchesCommand {
-    pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+    pub async fn execute(&self, config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+        let decider = if let Some(entity_description) = self.entity_description.as_ref() {
+            let api_key = config.openai_api_key()?;
+            Decider::OpenAI(OpenAIDecider::new(
+                api_key.to_string(),
+                entity_description.to_string(),
+            ))
+        } else {
+            Decider::Interactive
+        };
         let target_graph_dir_path = Path::new(&self.target_graph_dir);
         let source_graph_dir_path = Path::new(&self.source_graph_dir);
         let source_graph_path = source_graph_dir_path.join("aggregated.graph");
@@ -190,6 +219,11 @@ impl GenerateMatchesCommand {
                             &source_record_file,
                             &source_record_index_file,
                         )?;
+
+                        let is_match = decider
+                            .decide(&target_record, &source_record)
+                            .await
+                            .context("could not decide")?;
 
                         println!("Are the following records referring to the same entity?:");
                         println!("1. {target_record}");

@@ -88,9 +88,22 @@ enum Decider {
 
 impl Decider {
     async fn decide(&self, e1: &str, e2: &str) -> Result<bool, anyhow::Error> {
+        println!("Are the following records referring to the same entity?:");
+        println!("1. {e1}");
+        println!("2. {e2}");
         match self {
-            Decider::Interactive => todo!(),
-            Decider::OpenAI(d) => todo!(),
+            Decider::Interactive => read_y_n().context("could not read y or n from stdin"),
+            Decider::OpenAI(d) => {
+                let result = d.decide(e1, e2).await?;
+
+                if result {
+                    eprintln!("yes");
+                } else {
+                    eprintln!("no");
+                }
+
+                Ok(result)
+            }
         }
     }
 }
@@ -225,13 +238,9 @@ impl GenerateMatchesCommand {
                             .await
                             .context("could not decide")?;
 
-                        println!("Are the following records referring to the same entity?:");
-                        println!("1. {target_record}");
-                        println!("2. {source_record}");
-                        let matches = read_y_n().context("Could not read input from user!")?;
                         let source_id = source_graph.record_id_field_value(source_vector_id as u32);
                         let target_id = target_graph.record_id_field_value(target_vector_id as u32);
-                        if matches {
+                        if is_match {
                             answers_csv_wtr.write_record(&[source_id, target_id])?;
                             match_count += 1;
                         } else {

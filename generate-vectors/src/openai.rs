@@ -370,7 +370,8 @@ impl OpenAIDecider {
 
     pub async fn decide(&self, e1: &str, e2: &str) -> Result<bool, anyhow::Error> {
         lazy_static! {
-            static ref ENDPOINT: Url = Url::parse("https://api.openai.com/v1/completions").unwrap();
+            static ref ENDPOINT: Url =
+                Url::parse("https://api.openai.com/v1/chat/completions").unwrap();
             static ref CLIENT: Client = Client::new();
         }
 
@@ -379,7 +380,7 @@ impl OpenAIDecider {
                 role: "system".to_string(),
                 content: format!("You are a classifier deciding if two entities are a match or not. These entities are about the following:
 {}
-Tell me whether the following two records are referring to the same entity or a different entity using a chain of reasoning followed by a single yes or no answer on a single line.
+Tell me whether the following two records are referring to the same entity or a different entity using a chain of reasoning followed by a single yes or no answer on a single line, without any formatting.
 ", self.entity_description),
             },
             Message {
@@ -409,7 +410,7 @@ Tell me whether the following two records are referring to the same entity or a 
         let response: PartialCompletionResponse =
             serde_json::from_slice(&bytes).context("could not parse openai completion response")?;
 
-        let message = &response.messages[0];
+        let message = &response.choices[0].message;
         let last_line = message.content.lines().last().unwrap().to_lowercase();
         Ok(match last_line.as_str() {
             "yes" => true,
@@ -436,5 +437,10 @@ struct CompletionRequest {
 
 #[derive(Deserialize)]
 struct PartialCompletionResponse {
-    messages: Vec<Message>,
+    choices: Vec<PartialChoice>,
+}
+
+#[derive(Deserialize)]
+struct PartialChoice {
+    message: Message,
 }

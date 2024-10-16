@@ -641,6 +641,7 @@ impl Layer {
                 &sp,
                 comparator.clone(),
             );
+            search_queue.pop_first();
             let mut results = search_queue.get_all();
             results.truncate(k);
             (node_id, results)

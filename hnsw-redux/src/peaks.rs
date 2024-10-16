@@ -33,12 +33,7 @@ fn find_distance_transitions_from_slice(
     peaks
         .into_iter()
         .take(number_of_peaks)
-        .map(|p| {
-            (
-                (distances[p.position.start] + distances[p.position.end]) / 2.0,
-                p,
-            )
-        })
+        .map(|p| (distances[p.position.start], p))
         .collect()
 }
 

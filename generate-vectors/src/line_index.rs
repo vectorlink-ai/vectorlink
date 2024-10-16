@@ -23,8 +23,9 @@ pub struct LineIndexCommand {
     index_file: String,
 }
 
-pub fn read_index_position(index_file: &File, offset: usize) -> Result<u64, anyhow::Error> {
+pub fn read_index_position(index_file: &File, record_id: usize) -> Result<u64, anyhow::Error> {
     let mut buf = [0u8; 8];
+    let offset = record_id * std::mem::size_of::<u64>();
     index_file
         .read_exact_at(&mut buf, offset as u64)
         .context("Could not read at offset")?;
@@ -36,15 +37,19 @@ pub fn lookup_record(
     record_file: &File,
     index_file: &File,
 ) -> Result<String, anyhow::Error> {
+    // shift record id 1 for header.
+    let record_id = record_id + 1;
     let start = read_index_position(index_file, record_id)?;
     let end = read_index_position(index_file, record_id + 1)?;
-    let mut buf: Vec<u8> = Vec::with_capacity((end - start) as usize);
+
+    let mut buf: Vec<u8> = vec![0; (end - start) as usize];
     record_file
         .read_exact_at(&mut buf, start)
         .context("Unable to read record with indices given by index file")?;
-    Ok(std::str::from_utf8(&buf)
+    let record_str = std::str::from_utf8(&buf)
         .map(|s| s.to_string())
-        .context("Could not read as utf-8 string")?)
+        .context("Could not read as utf-8 string")?;
+    Ok(record_str)
 }
 
 pub fn create_index_lines<P1: AsRef<Path>, P2: AsRef<Path>>(
@@ -64,9 +69,8 @@ pub fn create_index_lines<P1: AsRef<Path>, P2: AsRef<Path>>(
             // EOF
             break;
         } else {
-            // subtract out the newline
-            index_file.write_u64::<LittleEndian>(char_count).unwrap();
             char_count += position as u64;
+            index_file.write_u64::<LittleEndian>(char_count).unwrap();
         }
     }
     Ok(())

@@ -7,8 +7,8 @@ use clap::Parser;
 use csv::Writer;
 use hnsw_redux::{
     index::{Index, IndexConfiguration},
-    params::FindPeaksParams,
-    vectors::Vectors,
+    params::{FindPeaksParams, SearchParams},
+    vectors::{Vector, Vectors},
 };
 
 use crate::{graph::FullGraph, line_index::lookup_record, model::EmbedderMetadata};
@@ -20,11 +20,11 @@ pub struct GenerateMatchesCommand {
     target_graph_dir: String,
 
     /// Original target record file (Either CSV or JSON-Lines)
-    #[arg(short, long)]
+    #[arg(long)]
     target_record_file: String,
 
     /// Line index for target record file
-    #[arg(short, long)]
+    #[arg(long)]
     target_record_file_index: String,
 
     /// The unindexed graph from which to search
@@ -32,11 +32,11 @@ pub struct GenerateMatchesCommand {
     source_graph_dir: String,
 
     /// Original source record file (Either CSV or JSON-Lines)
-    #[arg(short, long)]
+    #[arg(long)]
     source_record_file: String,
 
     /// Line index for source record file
-    #[arg(short, long)]
+    #[arg(long)]
     source_record_file_index: String,
 
     /// Line index for record file
@@ -120,9 +120,18 @@ impl GenerateMatchesCommand {
         let source_record_index_file = File::open(source_record_index_file_path)
             .context("Could not open the source index file for records")?;
 
-        let find_peaks_params = FindPeaksParams::default();
+        let source_vectors = Vectors::load(source_graph_dir_path, &self.filter_field)
+            .context("Unable to load vector file")?;
+
+        let find_peaks_params = FindPeaksParams {
+            number_of_searches: 10_000,
+            results_per_search: 24,
+            number_of_peaks: 5,
+            search_params: SearchParams::default(),
+        };
         let peaks = hnsw.find_distance_transitions(find_peaks_params);
-        let first_peak = if peaks.is_empty() {
+
+        let mut threshold_distance = if peaks.is_empty() {
             panic!("What do we do with no peak?");
         } else {
             peaks[0].0
@@ -137,39 +146,90 @@ impl GenerateMatchesCommand {
         let mut match_count = 0;
         const TOTAL_SEARCH_SIZE: usize = 10_000;
 
-        let knn_results: Vec<_> = hnsw.knn(k).take_any(TOTAL_SEARCH_SIZE).collect();
-        for (target_vector_id, neighbors) in knn_results {
-            eprintln!("Evaluating result");
-            let i = neighbors.partition_point(|(_, d)| *d < first_peak);
+        let neighbor_results: Vec<(u32, Vec<(u32, f32)>)> = source_vectors
+            .iter()
+            .enumerate()
+            .map(|(source_vector_id, query_vec)| {
+                (
+                    source_vector_id as u32,
+                    hnsw.search(Vector::Slice(query_vec), &SearchParams::default())
+                        .iter()
+                        .collect(),
+                )
+            })
+            .collect();
+
+        for (source_vector_id, neighbors) in neighbor_results {
+            eprintln!("Evaluating result with first peak at {threshold_distance}");
+            let i = neighbors.partition_point(|(_, d)| *d < threshold_distance);
             // Let's take only candidates in which there is a transition
             if i != 0 && i != neighbors.len() {
-                let (source_vector_id, distance) = if match_count > non_match_count {
+                let (target_vector_id, distance) = if match_count > non_match_count {
                     // should be bigger than i, how do we calculate...
                     neighbors[i]
                 } else {
                     neighbors[0]
                 };
-                let target_record = lookup_record(
-                    target_vector_id as usize,
-                    &target_record_file,
-                    &target_record_index_file,
-                )?;
-                let source_record = lookup_record(
-                    source_vector_id as usize,
-                    &source_record_file,
-                    &source_record_index_file,
-                )?;
-                println!("Are the following records referring to the same entity?:");
-                println!("1. {target_record}");
-                println!("2. {source_record}");
-                let matches = read_y_n().context("Could not read input from user!")?;
-                if matches {
-                    let source_id = source_graph.record_id_field_value(target_vector_id as u32);
-                    let target_id = target_graph.record_id_field_value(source_vector_id as u32);
-                    csv_wtr.write_record(&[source_id, target_id])?;
-                    match_count += 1;
-                } else {
-                    non_match_count += 1;
+                let target_record_ids = target_field_graph.value_id_to_record_ids(target_vector_id);
+                let source_record_ids = source_field_graph.value_id_to_record_ids(source_vector_id);
+                for target_record_id in target_record_ids {
+                    for source_record_id in source_record_ids {
+                        let target_record = lookup_record(
+                            *target_record_id as usize,
+                            &target_record_file,
+                            &target_record_index_file,
+                        )?;
+                        let source_record = lookup_record(
+                            *source_record_id as usize,
+                            &source_record_file,
+                            &source_record_index_file,
+                        )?;
+
+                        println!("Are the following records referring to the same entity?:");
+                        println!("1. {target_record}");
+                        println!("2. {source_record}");
+
+                        /*
+                        let target_record_previous = lookup_record(
+                            target_vector_id.saturating_sub(1) as usize,
+                            &target_record_file,
+                            &target_record_index_file,
+                        )?;
+                        let source_record_previous = lookup_record(
+                            source_vector_id.saturating_sub(1) as usize,
+                            &source_record_file,
+                            &source_record_index_file,
+                        )?;
+
+                        let target_record_subsequent = lookup_record(
+                            (target_vector_id + 1) as usize,
+                            &target_record_file,
+                            &target_record_index_file,
+                        )?;
+                        let source_record_subsequent = lookup_record(
+                            (source_vector_id + 1) as usize,
+                            &source_record_file,
+                            &source_record_index_file,
+                        )?;
+
+                        println!("1. {target_record_previous}");
+                        println!("2. {source_record_previous}");
+
+                        println!("1. {target_record_subsequent}");
+                        println!("2. {source_record_subsequent}");
+                                 */
+                        let matches = read_y_n().context("Could not read input from user!")?;
+                        if matches {
+                            let source_id =
+                                source_graph.record_id_field_value(source_vector_id as u32);
+                            let target_id =
+                                target_graph.record_id_field_value(target_vector_id as u32);
+                            csv_wtr.write_record(&[source_id, target_id])?;
+                            match_count += 1;
+                        } else {
+                            non_match_count += 1;
+                        }
+                    }
                 }
             }
 

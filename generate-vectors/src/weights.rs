@@ -23,6 +23,8 @@ use crate::{
     train::{build_test_and_train, compare_record_distances, predict, MatchClassifier},
 };
 
+use colored::Colorize;
+
 #[derive(Parser)]
 pub struct WeightsCommand {
     /// The indexed graph in which to search for comparison
@@ -128,8 +130,10 @@ impl WeightsCommand {
                 .collect();
             for result in rdr.records() {
                 let record = result.expect("Unable to parse csv field");
+                eprintln!("record[0]: {}", &record[0]);
+                eprintln!("record[1]: {}", &record[1]);
                 let source_id = source_id_map[&record[0]];
-                let target_id = source_id_map[&record[1]];
+                let target_id = target_id_map[&record[1]];
                 let source_record_ids = source_graph.id_graph().value_id_to_record_ids(source_id);
                 let target_record_ids = target_graph.id_graph().value_id_to_record_ids(target_id);
                 non_matches.push((source_record_ids.to_vec(), target_record_ids.to_vec()));
@@ -222,15 +226,20 @@ impl WeightsCommand {
             .context("Could not estimate parameters")?;
 
         let y: Vec<f32> = test_answers.into_iter().copied().collect();
-        let y_hat_as_nalgebra = predict(&test_features, &betas);
-        let y_hat: Vec<f32> = y_hat_as_nalgebra.into_iter().copied().collect();
-        let score = roc_auc_score(&y, &y_hat);
 
+        if y.is_empty() {
+            eprintln!("{}", "Test data is too small to evaluate!".bold().red());
+        } else {
+            let y_hat_as_nalgebra = predict(&test_features, &betas);
+            let y_hat: Vec<f32> = y_hat_as_nalgebra.into_iter().copied().collect();
+
+            let score = roc_auc_score(&y, &y_hat);
+            eprintln!("ROC AUC {}", score);
+        }
         let weights: HashMap<String, f32> = feature_names
             .into_iter()
             .zip(betas.data.as_vec().iter().copied())
             .collect();
-        eprintln!("ROC AUC {}", score);
         let weights_str = serde_json::to_string(&weights).context("Could not serialize weights")?;
         eprintln!("{weights_str}");
         Ok(())

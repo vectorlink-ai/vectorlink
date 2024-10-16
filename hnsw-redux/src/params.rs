@@ -64,3 +64,22 @@ impl Default for OptimizationParams {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct FindPeaksParams {
+    pub number_of_searches: usize,
+    pub results_per_search: usize,
+    pub number_of_peaks: usize,
+    pub search_params: SearchParams,
+}
+
+impl Default for FindPeaksParams {
+    fn default() -> Self {
+        Self {
+            number_of_searches: 300,
+            results_per_search: 20,
+            number_of_peaks: 5,
+            search_params: Default::default(),
+        }
+    }
+}

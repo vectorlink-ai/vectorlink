@@ -1,4 +1,5 @@
 use enum_dispatch::enum_dispatch;
+use find_peaks::Peak;
 use itertools::Either;
 use rayon::prelude::*;
 use std::fs::OpenOptions;
@@ -14,7 +15,7 @@ use crate::{
         QuantizedVectorComparatorConstructor,
     },
     hnsw::Hnsw,
-    params::{BuildParams, SearchParams},
+    params::{BuildParams, FindPeaksParams, SearchParams},
     pq::Pq,
     ring_queue::OrderedRingQueue,
     vectors::{Vector, Vectors},
@@ -44,6 +45,8 @@ pub trait Index {
         let proportion = 1.0 / (self.num_vectors() as f32).sqrt();
         self.test_recall_with_proportion(proportion, sp, seed)
     }
+
+    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)>;
 }
 
 pub trait NewIndex: Index {
@@ -169,6 +172,14 @@ impl Index for Pq1024x8 {
                     .unwrap()
             });
     }
+
+    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)> {
+        let quantized_comparator =
+            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+        self.pq
+            .quantized_hnsw
+            .find_distance_transitions(fpp, quantized_comparator)
+    }
 }
 
 impl Hnsw1024 {
@@ -255,6 +266,11 @@ impl Index for Hnsw1024 {
                 .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
         });
     }
+
+    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)> {
+        let comparator = CosineDistance1024::new(&self.vectors);
+        self.hnsw.find_distance_transitions(fpp, comparator)
+    }
 }
 
 impl Hnsw1536 {
@@ -340,6 +356,11 @@ impl Index for Hnsw1536 {
             file.write_all_at(raw_data, address)
                 .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
         });
+    }
+
+    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)> {
+        let comparator = CosineDistance1536::new(&self.vectors);
+        self.hnsw.find_distance_transitions(fpp, comparator)
     }
 }
 

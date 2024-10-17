@@ -32,10 +32,6 @@ pub struct CompareCommand {
     filter_field: String,
 
     #[arg(short, long)]
-    /// Field on which to return matches
-    id_field: String,
-
-    #[arg(short, long)]
     /// The initial filter threshold to determine what to test
     initial_threshold: f32,
 

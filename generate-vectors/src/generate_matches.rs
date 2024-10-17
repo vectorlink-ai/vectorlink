@@ -88,7 +88,7 @@ enum Decider {
 
 impl Decider {
     async fn decide(&self, e1: &str, e2: &str) -> Result<bool, anyhow::Error> {
-        println!("Are the following records referring to the same entity?:");
+        println!("Are the following records referring to the same entity?:\n");
         println!("1. {e1}");
         println!("2. {e2}");
         match self {
@@ -97,9 +97,9 @@ impl Decider {
                 let result = d.decide(e1, e2).await?;
 
                 if result {
-                    eprintln!("yes");
+                    eprintln!("yes\n");
                 } else {
-                    eprintln!("no");
+                    eprintln!("no\n");
                 }
 
                 Ok(result)
@@ -207,8 +207,11 @@ impl GenerateMatchesCommand {
                     )
                 });
 
+        eprintln!(
+            "Evaluating results with first large distance gradient at {threshold_distance}\n"
+        );
+
         for (source_vector_id, neighbors) in neighbor_results {
-            eprintln!("Evaluating result with first peak at {threshold_distance}");
             let i = neighbors.partition_point(|(_, d)| *d < threshold_distance);
             // Let's take only candidates in which there is a transition
             if i != 0 && i != neighbors.len() {
@@ -238,13 +241,15 @@ impl GenerateMatchesCommand {
                             .await
                             .context("could not decide")?;
 
-                        let source_id = source_graph.record_id_field_value(source_vector_id as u32);
-                        let target_id = target_graph.record_id_field_value(target_vector_id as u32);
+                        let source_id = source_graph.record_id_field_value(*source_record_id);
+                        let target_id = target_graph.record_id_field_value(*target_record_id);
                         if is_match {
                             answers_csv_wtr.write_record(&[source_id, target_id])?;
+                            answers_csv_wtr.flush()?;
                             match_count += 1;
                         } else {
                             non_matches_csv_wtr.write_record(&[source_id, target_id])?;
+                            non_matches_csv_wtr.flush()?;
                             non_match_count += 1;
                         }
                     }

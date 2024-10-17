@@ -8,6 +8,7 @@ use anyhow::Context;
 use bytes::Bytes;
 use clap::ValueEnum;
 use lazy_static::lazy_static;
+use regex::Regex;
 use reqwest::{header::HeaderValue, Body, Client, Method, Request, StatusCode, Url};
 use serde::{
     de::{SeqAccess, Visitor},
@@ -373,6 +374,8 @@ impl OpenAIDecider {
             static ref ENDPOINT: Url =
                 Url::parse("https://api.openai.com/v1/chat/completions").unwrap();
             static ref CLIENT: Client = Client::new();
+            static ref YES_MATCHER: Regex = Regex::new(r"yes").unwrap();
+            static ref NO_MATCHER: Regex = Regex::new(r"no").unwrap();
         }
 
         let messages = vec![
@@ -412,14 +415,14 @@ Tell me whether the following two records are referring to the same entity or a 
 
         let message = &response.choices[0].message;
         let last_line = message.content.lines().last().unwrap().to_lowercase();
-        Ok(match last_line.as_str() {
-            "yes" => true,
-            "no" => false,
-            _ => {
-                eprintln!("got a completion that was not a yes or no: {last_line}");
-                false
-            } // oops
-        })
+        if YES_MATCHER.is_match(last_line.as_str()) {
+            Ok(true)
+        } else if NO_MATCHER.is_match(last_line.as_str()) {
+            Ok(false)
+        } else {
+            eprintln!("got a completion that was not a yes or no: {last_line}");
+            Ok(false)
+        }
     }
 }
 

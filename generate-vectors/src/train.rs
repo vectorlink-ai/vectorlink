@@ -74,11 +74,13 @@ pub fn build_test_and_train<'a>(
         .map(|s| (s.to_string(), 1.0))
         .collect();
 
-    let count = usize::min(
-        source_compare_graph.graph.record_count(),
-        target_compare_graph.graph.record_count(),
-    );
-    let record_max = (count as f32 * proportion_for_test) as u32;
+    let count = candidates
+        .iter()
+        .map(|(a, b)| (a.len() * b.len()) as f32)
+        .sum::<f32>();
+
+    let record_max = (count * proportion_for_test) as u32;
+    eprintln!("record_max: {record_max}");
     let mut train_features = Vec::new();
     let mut train_answers = Vec::new();
     let mut test_features = Vec::new();

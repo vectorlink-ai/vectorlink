@@ -110,10 +110,6 @@ impl WeightsCommand {
         let candidates_for_compare: Vec<(Vec<u32>, Vec<u32>)> = if let Some(non_matches_file) =
             self.non_matches_file.as_ref()
         {
-            let non_matches_file =
-                File::open(non_matches_file).context("Unable to open non_matches file")?;
-            let mut rdr = csv::Reader::from_reader(non_matches_file);
-            let mut non_matches: Vec<(Vec<u32>, Vec<u32>)> = Vec::new();
             let source_id_map: HashMap<&str, u32> = source_graph
                 .id_graph()
                 .values
@@ -128,17 +124,27 @@ impl WeightsCommand {
                 .enumerate()
                 .map(|(i, s)| (s.as_str(), i as u32))
                 .collect();
-            for result in rdr.records() {
+
+            let matches_file =
+                File::open(&self.answers_file).context("Unable to open answer file")?;
+            let mut matches_rdr = csv::Reader::from_reader(matches_file);
+
+            let non_matches_file =
+                File::open(non_matches_file).context("Unable to open non_matches file")?;
+            let mut non_match_rdr = csv::Reader::from_reader(non_matches_file);
+            let mut candidates: Vec<(Vec<u32>, Vec<u32>)> = Vec::new();
+
+            for result in non_match_rdr.records().chain(matches_rdr.records()) {
                 let record = result.expect("Unable to parse csv field");
-                eprintln!("record[0]: {}", &record[0]);
-                eprintln!("record[1]: {}", &record[1]);
+                //eprintln!("record[0]: {}", &record[0]);
+                //eprintln!("record[1]: {}", &record[1]);
                 let source_id = source_id_map[&record[0]];
                 let target_id = target_id_map[&record[1]];
                 let source_record_ids = source_graph.id_graph().value_id_to_record_ids(source_id);
                 let target_record_ids = target_graph.id_graph().value_id_to_record_ids(target_id);
-                non_matches.push((source_record_ids.to_vec(), target_record_ids.to_vec()));
+                candidates.push((source_record_ids.to_vec(), target_record_ids.to_vec()));
             }
-            non_matches
+            candidates
         } else {
             // Source Value id is position, and results are target value ids.
             let results: Vec<(Vec<u32>, Vec<u32>)> = source_vectors

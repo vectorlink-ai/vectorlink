@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
+use rayon::prelude::*;
 
 use crate::{
     util::SimdAlignedAllocation,
@@ -124,6 +124,10 @@ impl Vectors {
 
     pub fn iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
         (0..self.num_vecs()).map(|i| &self[i])
+    }
+
+    pub fn par_iter(&self) -> impl IndexedParallelIterator<Item = &[u8]> + '_ {
+        (0..self.num_vecs()).into_par_iter().map(|i| &self[i])
     }
 
     pub fn normalize(&mut self) {

@@ -131,6 +131,17 @@ impl<'a> CompareGraph<'a> {
     pub fn new(graph: &'a FullGraph, vecs: HashMap<String, Vectors>) -> Self {
         Self { graph, vecs }
     }
+
+    pub fn record_id_field_value(&self, id: u32) -> &str {
+        self.graph
+            .id_graph()
+            .record_id_to_value(id)
+            .expect("Missing id field")
+    }
+
+    pub fn get_vectors(&self, field: &str) -> Option<&Vectors> {
+        self.vecs.get(field)
+    }
 }
 
 #[cfg(test)]

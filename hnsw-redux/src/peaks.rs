@@ -7,7 +7,7 @@ use rayon::{
 use crate::{
     hnsw::Hnsw,
     layer::{OrderedFloat, VectorComparator},
-    params::{FindPeaksParams, SearchParams},
+    params::FindPeaksParams,
 };
 
 fn derivative(source: &[f32]) -> Vec<f32> {

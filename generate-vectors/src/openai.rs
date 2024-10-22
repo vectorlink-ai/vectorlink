@@ -408,7 +408,7 @@ Tell me whether the following two records are referring to the same entity or a 
         let body: Body = body_vec.into();
         *req.body_mut() = Some(body);
 
-        let (status, bytes) = execute_request_and_get_bytes(&CLIENT, req).await?;
+        let (_status, bytes) = execute_request_and_get_bytes(&CLIENT, req).await?;
 
         let response: PartialCompletionResponse =
             serde_json::from_slice(&bytes).context("could not parse openai completion response")?;

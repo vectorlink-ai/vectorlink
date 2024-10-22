@@ -1,5 +1,4 @@
 #![feature(iterator_try_collect)]
-#![feature(bufread_skip_until)]
 
 use std::fs::File;
 

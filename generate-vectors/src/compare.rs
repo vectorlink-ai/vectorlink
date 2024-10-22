@@ -90,8 +90,8 @@ impl CompareCommand {
         let target_compare_graph = CompareGraph::new(&target_graph, target_vecs_map);
 
         // Cell to hold unindexed graph for borrow
-        let mut source_owned_graph = None;
-        let mut source_owned_compare_graph = None;
+        let source_owned_graph;
+        let source_owned_compare_graph;
         let (source_vectors, source_compare_graph) =
             if let Some(source_graph_dir) = self.source_graph_dir.as_ref() {
                 let source_graph_dir_path = Path::new(source_graph_dir);

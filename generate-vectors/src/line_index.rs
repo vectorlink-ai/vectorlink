@@ -2,7 +2,7 @@ use anyhow::Context;
 use byteorder::WriteBytesExt;
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Cursor},
+    io::{BufRead, BufReader},
     path::Path,
 };
 

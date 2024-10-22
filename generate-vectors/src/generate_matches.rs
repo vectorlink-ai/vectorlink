@@ -1,5 +1,4 @@
 use anyhow::Context;
-use rayon::prelude::*;
 use std::{fs::File, path::Path};
 
 use clap::Parser;
@@ -141,9 +140,6 @@ impl GenerateMatchesCommand {
             target_graph_dir_path,
         )?;
 
-        let source_vectors = Vectors::load(source_graph_dir_path, &self.filter_field)
-            .context("Unable to load vector file")?;
-
         let target_field_graph = target_graph
             .get(&self.filter_field)
             .expect("No target field graph found");
@@ -177,7 +173,7 @@ impl GenerateMatchesCommand {
         };
         let peaks = hnsw.find_distance_transitions(find_peaks_params);
 
-        let mut threshold_distance = if peaks.is_empty() {
+        let threshold_distance = if peaks.is_empty() {
             panic!("What do we do with no peak?");
         } else {
             peaks[0].0
@@ -189,8 +185,6 @@ impl GenerateMatchesCommand {
         let mut non_matches_csv_wtr = Writer::from_path(&self.non_matches_file)?;
         non_matches_csv_wtr.write_record(["source_id", "target_id"])?;
 
-        let mut total_records = 0;
-        let k = 20;
         let mut non_match_count = 0;
         let mut match_count = 0;
 
@@ -215,7 +209,7 @@ impl GenerateMatchesCommand {
             let i = neighbors.partition_point(|(_, d)| *d < threshold_distance);
             // Let's take only candidates in which there is a transition
             if i != 0 && i != neighbors.len() {
-                let (target_vector_id, distance) = if match_count > non_match_count {
+                let (target_vector_id, _distance) = if match_count > non_match_count {
                     // should be bigger than i, how do we calculate...
                     neighbors[i]
                 } else {

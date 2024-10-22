@@ -20,7 +20,7 @@ use smartcore::metrics::roc_auc_score;
 use crate::{
     graph::{CompareGraph, FullGraph},
     model::EmbedderMetadata,
-    train::{build_test_and_train, compare_record_distances, predict, MatchClassifier},
+    train::{build_test_and_train, predict, MatchClassifier},
 };
 
 use colored::Colorize;

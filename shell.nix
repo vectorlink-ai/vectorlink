@@ -4,12 +4,12 @@ mkShell {
     clang
     pkg-config
     openssl
-    (rust-bin.nightly.latest.default.override {
+    (rust-bin.nightly."2024-10-17".default.override {
       extensions = [ "rust-src" "rust-analyzer" ];
     })
   ];
 
   shellHook = ''
-export RUSTFLAGS="-C target-feature=+avx2,+f16c,+fma,+aes,+sse2"
-'';
+    export RUSTFLAGS="-C target-feature=+avx2,+f16c,+fma,+aes,+sse2"
+  '';
 }

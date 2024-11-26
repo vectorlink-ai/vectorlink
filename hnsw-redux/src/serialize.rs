@@ -6,8 +6,12 @@ use std::{
         unix::fs::{FileExt, MetadataExt},
     },
     path::{Path, PathBuf},
+    pin::Pin,
 };
 
+use async_trait::async_trait;
+use datafusion::{error::DataFusionError, execution::RecordBatchStream};
+use futures::TryStreamExt;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +26,37 @@ use crate::{
 #[derive(Serialize, Deserialize)]
 pub struct VectorsMetadata {
     pub vector_byte_size: usize,
+}
+
+#[async_trait]
+pub trait VectorsLoader {
+    fn vector_byte_size(&self) -> usize;
+    fn number_of_vectors(&self) -> usize;
+    async fn load(&self) -> Pin<Box<dyn RecordBatchStream>>;
+}
+
+impl Vectors {
+    pub async fn from_loader(loader: &dyn VectorsLoader) -> Result<Self, DataFusionError> {
+        let vector_byte_size = loader.vector_byte_size();
+        let meta = VectorsMetadata { vector_byte_size };
+        let total_file_size = vector_byte_size * loader.number_of_vectors();
+        let mut data = unsafe { SimdAlignedAllocation::<u8>::alloc(total_file_size) };
+
+        let mut stream = loader.load().await;
+        let mut ingested = 0;
+        while let Some(batch) = stream.try_next().await? {
+            let num_rows = batch.num_rows();
+            let batch_size = num_rows * vector_byte_size;
+            let start_offset = ingested * vector_byte_size;
+            let end_offset = start_offset + num_rows * vector_byte_size;
+            let slice = &mut data[start_offset..end_offset];
+            let col = batch.column(0).to_data();
+            let data: &[u8] = col.buffer(batch_size);
+            slice.copy_from_slice(data);
+            ingested += num_rows;
+        }
+        Ok(Self::new(data, meta.vector_byte_size))
+    }
 }
 
 impl Vectors {

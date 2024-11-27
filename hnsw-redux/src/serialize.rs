@@ -6,13 +6,22 @@ use std::{
         unix::fs::{FileExt, MetadataExt},
     },
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use async_trait::async_trait;
 use datafusion::{
-    arrow::datatypes::DataType, error::DataFusionError, execution::SendableRecordBatchStream,
+    arrow::{
+        array::{Array, FixedSizeListArray, RecordBatch, UInt32Array},
+        buffer::{Buffer, ScalarBuffer},
+        datatypes::{DataType, Field, Schema},
+        error::ArrowError,
+    },
+    error::DataFusionError,
+    execution::SendableRecordBatchStream,
 };
 use futures::TryStreamExt;
+use itertools::Itertools;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -148,7 +157,7 @@ impl Layer {
                     number_of_neighborhoods * single_neighborhood_size,
                 )
             };
-            assert_eq!(&DataType::Int32, inner_field.data_type());
+            assert_eq!(&DataType::UInt32, inner_field.data_type());
             let mut offset = 0;
             while let Some(batch) = stream.try_next().await? {
                 let batch_size = batch.num_rows();
@@ -165,6 +174,53 @@ impl Layer {
         } else {
             panic!("argh");
         }
+    }
+
+    pub fn neighborhood_batches(
+        &self,
+        batch_size: usize,
+    ) -> impl Iterator<Item = Result<RecordBatch, ArrowError>> + '_ {
+        (0..self.number_of_neighborhoods())
+            .step_by(batch_size)
+            .map(move |i| Ok(self.neighborhood_batch(i, batch_size)))
+    }
+
+    pub fn neighborhood_batch(&self, index: usize, batch_size: usize) -> RecordBatch {
+        let start_offset = index * self.single_neighborhood_size();
+        let end_offset = std::cmp::min(
+            start_offset + batch_size * self.single_neighborhood_size(),
+            self.neighborhoods().len(),
+        );
+        let len = end_offset - start_offset;
+        let neighborhood_buf =
+            Buffer::from_slice_ref(&self.neighborhoods()[start_offset..end_offset]);
+        let scalar_buf = ScalarBuffer::new(neighborhood_buf, 0, len);
+        let array = Arc::new(UInt32Array::new(scalar_buf, None));
+        let neighbor_field = Arc::new(Field::new("item".to_string(), DataType::UInt32, false));
+        let neighborhoods_array: Arc<dyn Array> = Arc::new(FixedSizeListArray::new(
+            neighbor_field.clone(),
+            self.single_neighborhood_size() as i32,
+            array,
+            None,
+        ));
+        let indexes_array: Arc<dyn Array> = Arc::new(UInt32Array::from_iter_values(
+            index as u32..(index + len) as u32,
+        ));
+
+        let neighborhood_field = Arc::new(Field::new(
+            "neighborhood".to_string(),
+            DataType::FixedSizeList(
+                neighbor_field.clone(),
+                self.single_neighborhood_size() as i32,
+            ),
+            false,
+        ));
+        let index_field = Arc::new(Field::new("index", DataType::UInt32, false));
+
+        let schema = Arc::new(Schema::new([index_field, neighborhood_field]));
+
+        RecordBatch::try_new(schema, vec![indexes_array, neighborhoods_array])
+            .expect("failed to produce record batch")
     }
 }
 
@@ -183,7 +239,7 @@ impl Layer {
     }
     pub fn store<P: AsRef<Path>>(&self, directory: P, layer_index: usize) -> io::Result<()> {
         let directory = directory.as_ref();
-        let data = self.data();
+        let data = self.raw_data();
         fs::write(Self::neighbors_path(directory, layer_index), data)?;
 
         let metadata_file = File::create(Self::meta_path(directory, layer_index))?;

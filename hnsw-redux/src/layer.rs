@@ -138,7 +138,11 @@ impl Layer {
         Self::new(data.cast_to(), single_neighborhood_size)
     }
 
-    pub fn data(&self) -> &[u8] {
+    pub fn neighborhoods(&self) -> &[u32] {
+        &self.neighborhoods
+    }
+
+    pub fn raw_data(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
                 self.neighborhoods.as_ptr() as *const u8,
@@ -646,6 +650,10 @@ impl Layer {
             results.truncate(k);
             (node_id, results)
         })
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &[u32]> + '_ {
+        self.neighborhoods.chunks(self.single_neighborhood_size)
     }
 }
 

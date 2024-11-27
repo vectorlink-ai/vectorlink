@@ -9,16 +9,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use bytemuck::cast_slice;
 use datafusion::{
-    arrow::{
-        array::{ArrayData, RecordBatch, RecordBatchReader},
-        buffer::Buffer,
-        datatypes::DataType,
-        error::ArrowError,
-    },
-    error::DataFusionError,
-    execution::{RecordBatchStream, SendableRecordBatchStream},
+    arrow::datatypes::DataType, error::DataFusionError, execution::SendableRecordBatchStream,
 };
 use futures::TryStreamExt;
 use rayon::prelude::*;
@@ -166,6 +158,7 @@ impl Layer {
                 let col = batch.column(col_index).to_data();
                 let data: &[u32] = col.buffer(batch_size);
                 slice.copy_from_slice(data);
+                offset += batch_size;
             }
 
             Ok(Self::new(neighborhoods, single_neighborhood_size))
@@ -220,6 +213,27 @@ impl Layer {
 #[derive(Serialize, Deserialize)]
 pub struct HnswMetadata {
     layer_count: usize,
+}
+
+#[async_trait]
+pub trait HnswLoader {
+    fn layer_count(&self) -> usize;
+    async fn get_layer_loader(&self, index: usize)
+        -> Result<Box<dyn LayerLoader>, DataFusionError>;
+}
+
+impl Hnsw {
+    pub async fn from_loader(loader: &dyn HnswLoader) -> Result<Self, DataFusionError> {
+        let layer_count = loader.layer_count();
+        let mut layers = Vec::with_capacity(layer_count);
+        for i in 0..layer_count {
+            let layer_loader = loader.get_layer_loader(i).await?;
+            let layer = Layer::from_loader(&*layer_loader).await?;
+            layers.push(layer);
+        }
+
+        Ok(Self::new(layers))
+    }
 }
 
 impl Hnsw {

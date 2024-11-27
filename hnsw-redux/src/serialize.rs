@@ -6,11 +6,20 @@ use std::{
         unix::fs::{FileExt, MetadataExt},
     },
     path::{Path, PathBuf},
-    pin::Pin,
 };
 
 use async_trait::async_trait;
-use datafusion::{error::DataFusionError, execution::RecordBatchStream};
+use bytemuck::cast_slice;
+use datafusion::{
+    arrow::{
+        array::{ArrayData, RecordBatch, RecordBatchReader},
+        buffer::Buffer,
+        datatypes::DataType,
+        error::ArrowError,
+    },
+    error::DataFusionError,
+    execution::{RecordBatchStream, SendableRecordBatchStream},
+};
 use futures::TryStreamExt;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -32,7 +41,7 @@ pub struct VectorsMetadata {
 pub trait VectorsLoader {
     fn vector_byte_size(&self) -> usize;
     fn number_of_vectors(&self) -> usize;
-    async fn load(&self) -> Pin<Box<dyn RecordBatchStream>>;
+    async fn load(&self) -> SendableRecordBatchStream;
 }
 
 impl Vectors {
@@ -126,6 +135,44 @@ impl Vectors {
 #[derive(Serialize, Deserialize)]
 pub struct LayerMetadata {
     single_neighborhood_size: usize,
+}
+
+#[async_trait]
+pub trait LayerLoader {
+    fn number_of_neighborhoods(&self) -> usize;
+    async fn load(&self) -> SendableRecordBatchStream;
+}
+
+impl Layer {
+    pub async fn from_loader(loader: &dyn LayerLoader) -> Result<Self, DataFusionError> {
+        let number_of_neighborhoods = loader.number_of_neighborhoods();
+        let mut stream = loader.load().await;
+        let schema = stream.schema();
+        let (col_index, field) = schema.column_with_name("neighbors").unwrap();
+        if let DataType::FixedSizeList(inner_field, single_neighborhood_size) = field.data_type() {
+            let single_neighborhood_size = *single_neighborhood_size as usize;
+            let mut neighborhoods = unsafe {
+                SimdAlignedAllocation::<u32>::alloc(
+                    number_of_neighborhoods * single_neighborhood_size,
+                )
+            };
+            assert_eq!(&DataType::Int32, inner_field.data_type());
+            let mut offset = 0;
+            while let Some(batch) = stream.try_next().await? {
+                let batch_size = batch.num_rows();
+                let start_offset = offset * single_neighborhood_size;
+                let end_offset = start_offset + batch_size * single_neighborhood_size;
+                let slice = &mut neighborhoods[start_offset..end_offset];
+                let col = batch.column(col_index).to_data();
+                let data: &[u32] = col.buffer(batch_size);
+                slice.copy_from_slice(data);
+            }
+
+            Ok(Self::new(neighborhoods, single_neighborhood_size))
+        } else {
+            panic!("argh");
+        }
+    }
 }
 
 impl Layer {

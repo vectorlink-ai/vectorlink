@@ -12,16 +12,21 @@ use std::{
 use async_trait::async_trait;
 use datafusion::{
     arrow::{
-        array::{Array, FixedSizeListArray, RecordBatch, UInt32Array},
+        array::{
+            Array, FixedSizeListArray, RecordBatch, RecordBatchIterator, RecordBatchReader,
+            UInt32Array,
+        },
         buffer::{Buffer, ScalarBuffer},
         datatypes::{DataType, Field, Schema},
         error::ArrowError,
     },
     error::DataFusionError,
     execution::SendableRecordBatchStream,
+    physical_plan::stream::RecordBatchStreamAdapter,
 };
-use futures::TryStreamExt;
+use futures::{stream, TryStreamExt};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -176,36 +181,13 @@ impl Layer {
         }
     }
 
-    pub fn neighborhood_batches(
-        &self,
-        batch_size: usize,
-    ) -> impl Iterator<Item = Result<RecordBatch, ArrowError>> + '_ {
-        (0..self.number_of_neighborhoods())
-            .step_by(batch_size)
-            .map(move |i| Ok(self.neighborhood_batch(i, batch_size)))
+    fn arrow_schema_() -> Arc<Schema> {
+        todo!();
     }
 
-    pub fn neighborhood_batch(&self, index: usize, batch_size: usize) -> RecordBatch {
-        let start_offset = index * self.single_neighborhood_size();
-        let end_offset = std::cmp::min(
-            start_offset + batch_size * self.single_neighborhood_size(),
-            self.neighborhoods().len(),
-        );
-        let len = end_offset - start_offset;
-        let neighborhood_buf =
-            Buffer::from_slice_ref(&self.neighborhoods()[start_offset..end_offset]);
-        let scalar_buf = ScalarBuffer::new(neighborhood_buf, 0, len);
-        let array = Arc::new(UInt32Array::new(scalar_buf, None));
+    pub fn arrow_schema(&self) -> Arc<Schema> {
+        // TODO this should cache
         let neighbor_field = Arc::new(Field::new("item".to_string(), DataType::UInt32, false));
-        let neighborhoods_array: Arc<dyn Array> = Arc::new(FixedSizeListArray::new(
-            neighbor_field.clone(),
-            self.single_neighborhood_size() as i32,
-            array,
-            None,
-        ));
-        let indexes_array: Arc<dyn Array> = Arc::new(UInt32Array::from_iter_values(
-            index as u32..(index + len) as u32,
-        ));
 
         let neighborhood_field = Arc::new(Field::new(
             "neighborhood".to_string(),
@@ -217,7 +199,52 @@ impl Layer {
         ));
         let index_field = Arc::new(Field::new("index", DataType::UInt32, false));
 
-        let schema = Arc::new(Schema::new([index_field, neighborhood_field]));
+        Arc::new(Schema::new([index_field, neighborhood_field]))
+    }
+
+    pub fn neighborhood_arrow_reader(&self, batch_size: usize) -> impl RecordBatchReader + '_ {
+        let schema = self.arrow_schema();
+        RecordBatchIterator::new(self.neighborhood_batches(batch_size), schema)
+    }
+
+    pub fn neighborhood_batches(
+        &self,
+        batch_size: usize,
+    ) -> impl Iterator<Item = Result<RecordBatch, ArrowError>> + '_ {
+        (0..self.number_of_neighborhoods())
+            .step_by(batch_size)
+            .map(move |i| Ok(self.neighborhood_batch(i, batch_size)))
+    }
+
+    pub fn neighborhood_batch(&self, index: usize, batch_size: usize) -> RecordBatch {
+        let schema = self.arrow_schema();
+        let start_offset = index * self.single_neighborhood_size();
+        let end_offset = std::cmp::min(
+            start_offset + batch_size * self.single_neighborhood_size(),
+            self.neighborhoods().len(),
+        );
+        let len = end_offset - start_offset;
+        let neighborhood_buf =
+            Buffer::from_slice_ref(&self.neighborhoods()[start_offset..end_offset]);
+        let scalar_buf = ScalarBuffer::new(neighborhood_buf, 0, len);
+        let array = Arc::new(UInt32Array::new(scalar_buf, None));
+        let neighbor_field = match schema
+            .field_with_name("index")
+            .expect("no index field in schema")
+            .data_type()
+        {
+            DataType::FixedSizeList(field, _) => field.clone(),
+            _ => panic!("field not of expected type"),
+        };
+        let neighborhoods_array: Arc<dyn Array> = Arc::new(FixedSizeListArray::new(
+            neighbor_field,
+            self.single_neighborhood_size() as i32,
+            array,
+            None,
+        ));
+        let indexes_array: Arc<dyn Array> = Arc::new(UInt32Array::from_iter_values(
+            index as u32..(index + len) as u32,
+        ));
 
         RecordBatch::try_new(schema, vec![indexes_array, neighborhoods_array])
             .expect("failed to produce record batch")

@@ -184,7 +184,7 @@ impl MemoizedCentroidDistances {
 
 #[inline]
 #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
-fn from_u16x8_to_f32x8(src: __m128i) -> __m256 {
+fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> __m256 {
     unsafe { std::arch::x86_64::_mm256_cvtph_ps(src.into()) }
 }
 

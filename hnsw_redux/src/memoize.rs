@@ -1,8 +1,10 @@
+#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
+use core::arch::x86_64::{__m128i, __m256};
 use std::simd::{
     cmp::{SimdPartialEq, SimdPartialOrd},
     f32x8, f64x8, masksizex8,
     num::{SimdFloat, SimdUint},
-    u16x8, usizex8, StdFloat,
+    u16x8, usizex8, Simd, StdFloat,
 };
 
 use rayon::prelude::*;
@@ -146,14 +148,13 @@ impl MemoizedCentroidDistances {
         let offsets = indexes_to_offsets(self.size, i.cast(), j.cast());
         let dot_products_slice: &[u16] =
             unsafe { std::mem::transmute(self.dot_products.as_slice()) };
-        let gathered = u16x8::gather_select(
+        let gathered: Simd<u16, 8> = u16x8::gather_select(
             dot_products_slice,
             (!equals_mask).cast(),
             offsets.cast(),
             u16x8::splat(0),
         );
-
-        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
+        let result = from_u16x8_to_f32x8(gathered.into());
         let partial_dot_products = f32x8::from(result);
 
         // we now have two simd registers with mutually exclusive lanes filled.
@@ -166,10 +167,8 @@ impl MemoizedCentroidDistances {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_or_default(norms_slice, i);
-        unsafe {
-            let result = std::arch::x86_64::_mm256_cvtph_ps(gathered.into());
-            f32x8::from(result)
-        }
+        let result = from_u16x8_to_f32x8(gathered);
+        f32x8::from(result)
     }
 
     #[inline]
@@ -178,12 +177,70 @@ impl MemoizedCentroidDistances {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
-        unsafe {
-            let result = std::arch::x86_64::_mm256_cvtph_ps(gathered.into());
-            f32x8::from(result)
-        }
+        let result = from_u16x8_to_f32x8(gathered);
+        f32x8::from(result)
     }
 }
+
+#[inline]
+#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
+fn from_u16x8_to_f32x8(src: __m128i) -> __m256 {
+    unsafe { std::arch::x86_64::_mm256_cvtph_ps(src.into()) }
+}
+
+#[inline]
+#[cfg(all(target_arch = "aarch64", target_feature  = "neon"))]
+fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    use core::arch::aarch64::{
+        uint16x4_t, uint16x8_t, uint32x4_t, float32x4_t, float32x4x2_t,
+        vget_high_u16, vget_low_u16, vmovl_u16, vcvtq_f32_u32
+    };
+    use std::simd::f32x4;
+
+    #[inline(always)]
+    unsafe fn simdify_block(v: uint16x4_t) -> Simd<f32, 4> {
+        let v: uint32x4_t = vmovl_u16(v); // widen each scalar
+        let v: float32x4_t = vcvtq_f32_u32(v); // floatify
+        v.into()
+    }
+
+    let src: uint16x8_t = src.into();
+    unsafe { // Process as `high` and `low` blocks of values, each of 4 elements
+        let h: uint16x4_t = vget_high_u16(src); // extract
+        let l: uint16x4_t = vget_low_u16(src);  // extract
+        let h: f32x4 = simdify_block(h);
+        let l: f32x4 = simdify_block(l);
+
+        let mut v = Simd::<f32, 8>::from_array([0_f32; 8]);
+        const BLOCK_LEN: usize = 4;
+        for i in 0 .. BLOCK_LEN {
+            // Hopefully Rust is smart enough to vectorize this
+            v[i + BLOCK_LEN] = h[i];
+            v[i] = l[i];
+        }
+        v
+    }
+}
+
+#[inline]
+#[cfg(not(any(
+    all(target_arch = "x86_64", target_feature = "f16c"),
+    all(target_arch = "aarch64", target_feature = "neon"),
+)))]
+fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> { // default
+    // NOTE: Ideally there would be some kind of fast primitive for this
+    //       on `AArch64`, just like there is for `x86_64 + f16c`.
+    const LEN: usize = 8;
+    let array: &[u16; LEN] = src.as_array();
+    let mut dst = [0_f32; LEN];
+    for i in 0..LEN {
+        // Slow but safe. Cannot use `std::mem::transmute()`
+        // because `src` and `dst` have different sizes.
+        dst[i] = f32::from(array[i]);
+    }
+    f32x8::from_array(dst)
+}
+
 
 #[cfg(test)]
 mod offsettest {

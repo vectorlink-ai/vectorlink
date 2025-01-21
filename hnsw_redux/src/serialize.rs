@@ -109,7 +109,10 @@ impl Vectors {
             .read(true)
             .open(Self::vec_path(directory, identity))?;
         let raw_fd = vector_file.as_raw_fd();
+        #[cfg(target_os = "linux")]
         unsafe {
+            // The `libc::posix_fadvise()` fn doesn't exist on e.g. MacOS.
+            // Therefore, only use this optimization when it's available.
             assert_eq!(
                 libc::posix_fadvise(raw_fd, 0, 0, libc::POSIX_FADV_SEQUENTIAL),
                 0,

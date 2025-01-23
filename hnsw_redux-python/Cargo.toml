@@ -1,0 +1,19 @@
+[package]
+name = "hnsw_redux-python"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings for hnsw_redux"
+
+[dependencies]
+hnsw_redux = { version = "0.1.0", path = "../hnsw_redux" }
+paste = "1.0.15"
+
+[dependencies.pyo3]
+version = "0.23.4"
+# "abi3-py38" tells pyo3 / maturin to build using the stable ABI with Python >= 3.8
+features = ["abi3-py38", "experimental-async"]
+
+[lib]
+name = "hnsw_redux"
+# "cdylib" is necessary to produce a shared library for Python to import from.
+crate-type = ["cdylib"]

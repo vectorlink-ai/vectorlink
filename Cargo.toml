@@ -11,7 +11,8 @@ members = [
     "test-recall",
     "time-load",
     "generate-vectors",
-    "index-graph-field"
+    "index-graph-field",
+    "hnsw_redux-python"
 ]
 
 [profile.release]

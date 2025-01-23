@@ -65,7 +65,6 @@ impl Vectors {
         let len = num_vecs * vector_byte_size;
         let mut data = unsafe { SimdAlignedAllocation::alloc(len) };
         reader.read_exact(&mut data[..])?;
-
         Ok(Self::new(data, vector_byte_size))
     }
 

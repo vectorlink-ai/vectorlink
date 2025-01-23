@@ -72,27 +72,27 @@ impl Vectors {
         }
         Ok(Self::new(data, meta.vector_byte_size))
     }
-}
 
-impl Vectors {
     fn vec_path(directory: &Path, identity: &str) -> PathBuf {
         directory.join(format!("{identity}.vecs"))
     }
+
     fn meta_path(directory: &Path, identity: &str) -> PathBuf {
         directory.join(format!("{identity}.metadata.json"))
     }
+
     fn metadata(&self) -> VectorsMetadata {
         VectorsMetadata {
             vector_byte_size: self.vector_byte_size(),
         }
     }
+
     pub fn store<P: AsRef<Path>>(&self, directory: P, identity: &str) -> io::Result<()> {
         let directory = directory.as_ref();
         let mut vec_file = File::create(Self::vec_path(directory, identity))?;
         vec_file.write_all(self.data())?;
         let metadata_file = File::create(Self::meta_path(directory, identity))?;
         serde_json::to_writer(metadata_file, &self.metadata())?;
-
         Ok(())
     }
 
@@ -320,14 +320,13 @@ impl Hnsw {
 
         Ok(Self::new(layers))
     }
-}
 
-impl Hnsw {
     fn metadata(&self) -> HnswMetadata {
         HnswMetadata {
             layer_count: self.layer_count(),
         }
     }
+
     fn meta_path(directory: &Path) -> PathBuf {
         directory.join("hnsw.json")
     }

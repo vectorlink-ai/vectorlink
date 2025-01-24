@@ -1,6 +1,7 @@
 use ::datafusion::arrow::datatypes::Schema;
 use ::hnsw_redux::{
     hnsw,
+    index,
     serialize,
     util,
     vectors,
@@ -227,6 +228,44 @@ impl Hnsw {
         Ok(Self(hnsw::Hnsw::load(dirpath)?))
     }
 }
+
+
+#[pyclass(module = "hnsw_redux")]
+pub struct HnswType(serialize::HnswType);
+
+
+macro_rules! wrap_index_type {
+    ($($type:ident),* $(,)?) => {
+        $(
+            #[pyclass(module = "hnsw_redux")]
+            pub struct $type(index::$type);
+
+            #[pymethods]
+            impl $type {
+                #[staticmethod]
+                pub fn load(
+                    name: &str,
+                    hnsw_root_dirpath: &str,
+                    vector_dirpath:&str,
+                ) -> PyResult<Self> {
+                    Ok(Self(index::$type::load(
+                        name,
+                        hnsw_root_dirpath,
+                        vector_dirpath
+                    )?))
+                }
+
+                pub fn store_hnsw(&self, hnsw_dirpath: &str) -> PyResult<()> {
+                    Ok(self.0.store_hnsw(hnsw_dirpath)?)
+                }
+            }
+        )*
+    }
+}
+
+wrap_index_type![Hnsw1024, Hnsw1536, IndexConfiguration];
+
+
 
 
 // TODO HNSW:

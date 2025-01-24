@@ -27,7 +27,7 @@ mkShell {
       virtualenvwrapper
       wheel
     ]))
-    (rust-bin.nightly."2024-10-17".default.override {
+    (rust-bin.nightly."2025-01-23".default.override {
       extensions = [ "rustfmt" "rust-src" "rust-analyzer" ];
       targets = [
         "aarch64-apple-darwin"

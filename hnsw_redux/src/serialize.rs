@@ -146,6 +146,12 @@ pub struct LayerMetadata {
     single_neighborhood_size: usize,
 }
 
+impl LayerMetadata {
+    pub fn single_neighborhood_size(&self) -> usize {
+        self.single_neighborhood_size
+    }
+}
+
 #[async_trait]
 pub trait LayerLoader {
     fn number_of_neighborhoods(&self) -> usize;
@@ -182,10 +188,6 @@ impl Layer {
         } else {
             panic!("argh");
         }
-    }
-
-    fn arrow_schema_() -> Arc<Schema> {
-        todo!();
     }
 
     pub fn arrow_schema(&self) -> Arc<Schema> {
@@ -252,10 +254,8 @@ impl Layer {
         RecordBatch::try_new(schema, vec![indexes_array, neighborhoods_array])
             .expect("failed to produce record batch")
     }
-}
 
-impl Layer {
-    fn metadata(&self) -> LayerMetadata {
+    pub fn metadata(&self) -> LayerMetadata {
         LayerMetadata {
             single_neighborhood_size: self.single_neighborhood_size(),
         }
@@ -264,9 +264,11 @@ impl Layer {
     fn neighbors_path(directory: &Path, layer_index: usize) -> PathBuf {
         directory.join(format!("layer.{layer_index}.neighbors"))
     }
+
     fn meta_path(directory: &Path, layer_index: usize) -> PathBuf {
         directory.join(format!("layer.{layer_index}.metadata.json"))
     }
+
     pub fn store<P: AsRef<Path>>(&self, directory: P, layer_index: usize) -> io::Result<()> {
         let directory = directory.as_ref();
         let data = self.raw_data();
@@ -301,11 +303,19 @@ pub struct HnswMetadata {
     layer_count: usize,
 }
 
+impl HnswMetadata {
+    pub fn layer_count(&self) -> usize {
+        self.layer_count
+    }
+}
+
 #[async_trait]
 pub trait HnswLoader {
     fn layer_count(&self) -> usize;
-    async fn get_layer_loader(&self, index: usize)
-        -> Result<Box<dyn LayerLoader>, DataFusionError>;
+    async fn get_layer_loader(
+        &self,
+        index: usize
+    ) -> Result<Box<dyn LayerLoader>, DataFusionError>;
 }
 
 impl Hnsw {
@@ -321,7 +331,7 @@ impl Hnsw {
         Ok(Self::new(layers))
     }
 
-    fn metadata(&self) -> HnswMetadata {
+    pub fn metadata(&self) -> HnswMetadata {
         HnswMetadata {
             layer_count: self.layer_count(),
         }

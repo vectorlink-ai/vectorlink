@@ -5,11 +5,16 @@ edition = "2021"
 description = "Python bindings for hnsw_redux"
 
 [dependencies]
+datafusion = { version = "44.0.0", features = ["pyarrow"] }
+# TODO: For now, the brdatafusion/main and datafusion-python/main
+#       git branches disagree on what pyo3 version to use.
+# datafusion = { git = "https://github.com/apache/datafusion.git" }
+# datafusion-python = { git = "https://github.com/apache/datafusion-python.git" }
 hnsw_redux = { version = "0.1.0", path = "../hnsw_redux" }
 paste = "1.0.15"
 
 [dependencies.pyo3]
-version = "0.23.4"
+version = "0.22.4"
 # "abi3-py38" tells pyo3 / maturin to build using the stable ABI with Python >= 3.8
 features = ["abi3-py38", "experimental-async"]
 

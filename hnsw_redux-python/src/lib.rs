@@ -75,9 +75,9 @@ impl Vectors {
         self.0.normalize()
     }
 
-    pub fn __getitem__(&self, key: usize) -> PyResult<&[u8]> {
+    pub fn __getitem__(&self, index: usize) -> PyResult<&[u8]> {
         if key < self.num_vecs() {
-            Ok(&self.0[key])
+            Ok(&self.0[index])
         } else {
             Err(PyIndexError::new_err("error message"))
         }

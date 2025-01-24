@@ -1,3 +1,5 @@
+#![allow(unused)] // TODO: remove
+
 use ::datafusion::arrow::datatypes::Schema;
 use ::hnsw_redux::{
     hnsw,
@@ -19,8 +21,16 @@ use std::sync::Arc;
 // settings in `Cargo.toml`, else Python will not be able to import the module.
 #[pymodule]
 fn hnsw_redux(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<SimdAlignedAllocationU8>()?;
     m.add_class::<Vectors>()?;
+    m.add_class::<SimdAlignedAllocationU8>()?;
+    m.add_class::<LayerMetadata>()?;
+    m.add_class::<Layer>()?;
+    m.add_class::<HnswMetadata>()?;
+    m.add_class::<Hnsw>()?;
+    m.add_class::<HnswType>()?;
+    m.add_class::<Hnsw1024>()?;
+    m.add_class::<Hnsw1536>()?;
+    m.add_class::<IndexConfiguration>()?;
     Ok(())
 }
 
@@ -96,8 +106,6 @@ impl Vectors {
         Ok(Self(vectors::Vectors::load(dirpath, identity)?))
     }
 }
-
-
 
 
 
@@ -190,6 +198,7 @@ impl Layer {
     }
 }
 
+
 #[pyclass(module = "hnsw_redux")]
 pub struct HnswMetadata(serialize::HnswMetadata);
 
@@ -199,6 +208,7 @@ impl HnswMetadata {
         self.0.layer_count()
     }
 }
+
 
 #[pyclass(module = "hnsw_redux")]
 pub struct Hnsw(hnsw::Hnsw);

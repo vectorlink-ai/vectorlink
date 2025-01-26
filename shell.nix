@@ -1,11 +1,16 @@
 {pkgs, mkShell}:
 let
   pythonVenvShellHook = ''
-    # Setup the virtual environment if it doesn't already exist.
+    # Setup a fresh virtualenv when `direnv reload` is executed.  This is done
+    # to keep the project working after a `nix-collect-garbage` removes the
+    # pointee entry in the nix store. When this happens, the pointer
+    # (e.g. `$VENV/bin/python`) becomes stale and breaks.
+
     VENV=.venv
-    if test ! -d $VENV; then
-      virtualenv $VENV
+    if test -d $VENV; then
+      rm -rf $VENV  # Remove any existing virtualenv
     fi
+    virtualenv $VENV  # Setup a fresh virtualenv
     source ./$VENV/bin/activate
     export PYTHONPATH=`pwd`/$VENV/${pkgs.python3.sitePackages}/:$PYTHONPATH
   '';

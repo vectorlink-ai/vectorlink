@@ -6,7 +6,6 @@ use std::{
     simd::{LaneCount, Simd, SimdElement, SupportedLaneCount},
 };
 
-use datafusion::arrow::alloc::Allocation;
 
 /// Align allocations to be rust simd friendly.
 /// The biggest possible simd abstration is f64x64, which is 512 bytes. So this

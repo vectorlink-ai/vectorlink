@@ -22,11 +22,8 @@ use datafusion::{
     },
     error::DataFusionError,
     execution::SendableRecordBatchStream,
-    physical_plan::stream::RecordBatchStreamAdapter,
 };
 use futures::{stream, TryStreamExt};
-use itertools::Itertools;
-use lazy_static::lazy_static;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 

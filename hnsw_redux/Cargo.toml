@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.83"
 bytemuck = "1.20.0"
-datafusion = "43.0.0"
+datafusion = { workspace = true }
 enum_dispatch = "0.3.13"
 find_peaks = "0.1.5"
 futures = "0.3.31"

@@ -22,3 +22,12 @@ debug = true
 inherits = "release"
 debug-assertions = true
 overflow-checks = true
+
+[workspace.dependencies]
+# TODO: For now, the brdatafusion/main and datafusion-python/main
+#       git branches disagree on what pyo3 version to use.
+#       Once they do, replace the "pyarrow" feature with
+#       the "datafusion-python" dependency.
+# datafusion = { git = "https://github.com/apache/datafusion.git" }
+# datafusion-python = { git = "https://github.com/apache/datafusion-python.git" }
+datafusion = { version = "44.0.0", features = ["pyarrow"] }

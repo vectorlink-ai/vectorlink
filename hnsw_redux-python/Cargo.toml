@@ -5,11 +5,8 @@ edition = "2021"
 description = "Python bindings for hnsw_redux"
 
 [dependencies]
-datafusion = { version = "44.0.0", features = ["pyarrow"] }
-# TODO: For now, the brdatafusion/main and datafusion-python/main
-#       git branches disagree on what pyo3 version to use.
-# datafusion = { git = "https://github.com/apache/datafusion.git" }
-# datafusion-python = { git = "https://github.com/apache/datafusion-python.git" }
+datafusion = { workspace = true }
+# datafusion-python = { workspace = true }
 hnsw_redux = { version = "0.1.0", path = "../hnsw_redux" }
 paste = "1.0.15"
 

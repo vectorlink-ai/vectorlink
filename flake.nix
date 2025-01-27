@@ -11,7 +11,7 @@
 
   outputs = { self, nixpkgs, rust-overlay }:(
     let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
+      supportedSystems = [ "aarch64-darwin" "x86_64-linux" "aarch64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       nixpkgsFor = forAllSystems (system:
         (import nixpkgs) {

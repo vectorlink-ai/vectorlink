@@ -14,7 +14,7 @@ pub mod queue_view;
 pub mod ring_queue;
 pub mod serialize;
 pub mod test_util;
-mod util;
+pub mod util;
 pub mod vecmath;
 pub mod vectors;
 pub mod peaks;

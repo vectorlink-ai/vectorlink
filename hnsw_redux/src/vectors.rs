@@ -19,6 +19,9 @@ pub enum Vector<'a> {
     Id(u32),
 }
 
+/// A slab of `N` vectors, where:
+///   * each vector is aligned, and
+///   * `N = data.len() / vector_byte_size`
 #[derive(Clone)]
 pub struct Vectors {
     data: SimdAlignedAllocation<u8>,
@@ -27,11 +30,7 @@ pub struct Vectors {
 
 impl Vectors {
     pub fn empty(vector_byte_size: usize) -> Self {
-        let data: SimdAlignedAllocation<u8> = unsafe { SimdAlignedAllocation::alloc(0) };
-        Self {
-            data,
-            vector_byte_size,
-        }
+        Self::new(unsafe { SimdAlignedAllocation::alloc(0) }, vector_byte_size)
     }
 
     pub fn new(data: SimdAlignedAllocation<u8>, vector_byte_size: usize) -> Self {
@@ -44,7 +43,6 @@ impl Vectors {
 
     pub fn from_file<P: AsRef<Path>>(path: P, vector_byte_size: usize) -> io::Result<Self> {
         eprintln!("Loading vectors from file {:?}", path.as_ref());
-        let path = path.as_ref();
         let file = File::open(path)?;
         let file_size = file.metadata()?.size() as usize;
         assert_eq!(
@@ -53,7 +51,6 @@ impl Vectors {
             "vector file does not contain an exact amount of vectors"
         );
         let num_vecs = file_size / vector_byte_size;
-
         Self::from_reader(file, num_vecs, vector_byte_size)
     }
 
@@ -65,7 +62,6 @@ impl Vectors {
         let len = num_vecs * vector_byte_size;
         let mut data = unsafe { SimdAlignedAllocation::alloc(len) };
         reader.read_exact(&mut data[..])?;
-
         Ok(Self::new(data, vector_byte_size))
     }
 

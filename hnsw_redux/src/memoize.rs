@@ -192,53 +192,47 @@ fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> __m256 {
 #[cfg(all(target_arch = "aarch64", target_feature  = "neon"))]
 fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
     use core::arch::aarch64::{
-        uint16x4_t, uint16x8_t, uint32x4_t, float32x4_t, float32x4x2_t,
+        uint16x4_t, uint16x8_t, uint32x4_t, float32x4_t,
         vget_high_u16, vget_low_u16, vmovl_u16, vcvtq_f32_u32
     };
     use std::simd::f32x4;
 
     #[inline(always)]
-    unsafe fn simdify_block(v: uint16x4_t) -> Simd<f32, 4> {
-        let v: uint32x4_t = vmovl_u16(v); // widen each scalar
-        let v: float32x4_t = vcvtq_f32_u32(v); // floatify
-        v.into()
+    unsafe fn extract_blocks(src: uint16x8_t) -> (uint16x4_t, uint16x4_t) {
+        (vget_high_u16(src), vget_low_u16(src))
+    }
+
+    #[inline(always)]
+    unsafe fn simdify_block(block: uint16x4_t) -> Simd<f32, 4> {
+        let block: uint32x4_t = vmovl_u16(block); // widen each scalar
+        let block: float32x4_t = vcvtq_f32_u32(block); // floatify
+        block.into()
     }
 
     let src: uint16x8_t = src.into();
     unsafe { // Process as `high` and `low` blocks of values, each of 4 elements
-        let h: uint16x4_t = vget_high_u16(src); // extract
-        let l: uint16x4_t = vget_low_u16(src);  // extract
-        let h: f32x4 = simdify_block(h);
-        let l: f32x4 = simdify_block(l);
-
-        let mut v = Simd::<f32, 8>::from_array([0_f32; 8]);
-        const BLOCK_LEN: usize = 4;
-        for i in 0 .. BLOCK_LEN {
-            // Hopefully Rust is smart enough to vectorize this
-            v[i + BLOCK_LEN] = h[i];
-            v[i] = l[i];
-        }
-        v
+        let (h, l): (uint16x4_t, uint16x4_t) = extract_blocks(src);
+        let (h, l): (f32x4, f32x4) = (simdify_block(h), simdify_block(l));
+        let array: [[f32; 4]; 2] = [h.to_array(), l.to_array()];
+        let array: [f32; 8] = std::mem::transmute(array);
+        Simd::<f32, 8>::from_array(array)
     }
 }
 
 #[inline]
-#[cfg(not(any(
+#[cfg(not(any( // default non-SIMD implementation
     all(target_arch = "x86_64", target_feature = "f16c"),
     all(target_arch = "aarch64", target_feature = "neon"),
 )))]
-fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> { // default
-    // NOTE: Ideally there would be some kind of fast primitive for this
-    //       on `AArch64`, just like there is for `x86_64 + f16c`.
-    const LEN: usize = 8;
-    let array: &[u16; LEN] = src.as_array();
-    let mut dst = [0_f32; LEN];
-    for i in 0..LEN {
+fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    let src: &[u16; 8] = src.as_array();
+    let mut dst = [0_f32; 8];
+    for i in 0..8 {
         // Slow but safe. Cannot use `std::mem::transmute()`
         // because `src` and `dst` have different sizes.
-        dst[i] = f32::from(array[i]);
+        dst[i] = f32::from(src[i]);
     }
-    f32x8::from_array(dst)
+    Simd::<f32, 8>::from_array(dst)
 }
 
 

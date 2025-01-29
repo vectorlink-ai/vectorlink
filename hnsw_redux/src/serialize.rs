@@ -40,10 +40,13 @@ pub struct VectorsMetadata {
     pub vector_byte_size: usize,
 }
 
+// Send + Sync super traits are necessary for pyo3 / maturin bindings
 #[async_trait]
-pub trait VectorsLoader {
+pub trait VectorsLoader: Send + Sync {
     fn vector_byte_size(&self) -> usize;
+
     fn number_of_vectors(&self) -> usize;
+
     async fn load(&self) -> SendableRecordBatchStream;
 }
 
@@ -149,9 +152,11 @@ impl LayerMetadata {
     }
 }
 
+// Send + Sync super traits are necessary for pyo3 / maturin bindings
 #[async_trait]
-pub trait LayerLoader {
+pub trait LayerLoader: Send + Sync {
     fn number_of_neighborhoods(&self) -> usize;
+
     async fn load(&self) -> SendableRecordBatchStream;
 }
 
@@ -306,13 +311,15 @@ impl HnswMetadata {
     }
 }
 
+// Send + Sync super traits are necessary for pyo3 / maturin bindings
 #[async_trait]
-pub trait HnswLoader {
+pub trait HnswLoader: Send + Sync {
     fn layer_count(&self) -> usize;
+
     async fn get_layer_loader(
         &self,
         index: usize
-    ) -> Result<Box<dyn LayerLoader>, DataFusionError>;
+    ) -> Result<Arc<dyn LayerLoader>, DataFusionError>;
 }
 
 impl Hnsw {

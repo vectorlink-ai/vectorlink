@@ -1,9 +1,18 @@
 #![allow(unused)] // TODO: remove
 
-use ::datafusion::arrow::datatypes::Schema;
+use datafusion::{
+    arrow::array::RecordBatch,
+    execution::RecordBatchStream
+};
+use ::datafusion::{
+    arrow::datatypes::Schema,
+    error::DataFusionError,
+    execution::SendableRecordBatchStream,
+};
 use ::hnsw_redux::{
     hnsw,
     index,
+    layer,
     serialize,
     util,
     vectors,
@@ -12,7 +21,7 @@ use ::pyo3::{
     exceptions::{PyException, PyIndexError, PyTypeError},
     prelude::*,
     pyclass::PyClass,
-    types::{IntoPyDict, PyDict},
+    types::{IntoPyDict, PyDict, PyCapsule},
 };
 use std::sync::Arc;
 
@@ -53,6 +62,16 @@ impl Vectors {
     #[staticmethod]
     pub fn from_file(filepath: &str, vector_byte_size: usize) -> PyResult<Self> {
         Ok(Self(vectors::Vectors::from_file(filepath, vector_byte_size)?))
+    }
+
+    #[staticmethod]
+    pub async fn from_loader(loader: VectorsLoader) -> PyResult<Self> {
+        vectors::Vectors::from_loader(&*loader.0).await
+            .map(Self)
+            .map_err(|datafusion_error| {
+                let msg = format!("DataFusion error: {datafusion_error}");
+                PyErr::new::<PyTypeError, _>(msg)
+            })
     }
 
     pub fn num_vecs(&self) -> usize {
@@ -107,6 +126,81 @@ impl Vectors {
         Ok(Self(vectors::Vectors::load(dirpath, identity)?))
     }
 }
+
+
+
+#[pyclass]
+#[derive(Clone)]
+pub struct VectorsLoader(Arc<dyn serialize::VectorsLoader>);
+
+impl VectorsLoader {
+    async fn load(&self) -> SendableRecordBatchStream {
+        self.0.load().await
+    }
+}
+
+impl From<Arc<dyn serialize::VectorsLoader>> for VectorsLoader {
+    fn from(inner: Arc<dyn serialize::VectorsLoader>) -> Self {
+        Self(inner)
+    }
+}
+
+unsafe impl Send for VectorsLoader {}
+unsafe impl Sync for VectorsLoader {}
+
+
+
+
+#[pyclass]
+#[derive(Clone)]
+pub struct LayerLoader(Arc<dyn serialize::LayerLoader>);
+
+impl LayerLoader {
+    async fn load(&self) -> SendableRecordBatchStream {
+        self.0.load().await
+    }
+}
+
+impl From<Arc<dyn serialize::LayerLoader>> for LayerLoader {
+    fn from(inner: Arc<dyn serialize::LayerLoader>) -> Self {
+        Self(inner)
+    }
+}
+
+unsafe impl Send for LayerLoader {}
+unsafe impl Sync for LayerLoader {}
+
+
+
+#[pyclass]
+#[derive(Clone)]
+pub struct HnswLoader(Arc<dyn serialize::HnswLoader>);
+
+#[pymethods]
+impl HnswLoader {
+    fn layer_count(&self) -> usize {
+        self.0.layer_count()
+    }
+
+    async fn get_layer_loader(
+        &self,
+        index: usize
+    ) -> Result<LayerLoader, DataFusionError> {
+        let loader = self.0.get_layer_loader(index).await?;
+        Ok(LayerLoader(loader))
+    }
+}
+
+impl From<Arc<dyn serialize::HnswLoader>> for HnswLoader {
+    fn from(inner: Arc<dyn serialize::HnswLoader>) -> Self {
+        Self(inner)
+    }
+}
+
+unsafe impl Send for HnswLoader {}
+unsafe impl Sync for HnswLoader {}
+
+
 
 
 
@@ -173,12 +267,15 @@ pub struct Layer(::hnsw_redux::layer::Layer);
 #[pymethods]
 impl Layer {
 
-    // pub async fn from_loader(loader: &dyn LayerLoader) -> Result<Self, DataFusionError> {
-    //     // TODO: Provide a way to
-    //     //       1. obtain a `serialize::LayerLoader` instance, or
-    //     //       2. load from a DataFusion DataFrame
-    //     todo!() // TODO
-    // }
+    #[staticmethod]
+    pub async fn from_loader(loader: LayerLoader) -> PyResult<Self/*, DataFusionError*/> {
+        layer::Layer::from_loader(&*loader.0).await
+            .map(Self)
+            .map_err(|datafusion_error| {
+                let msg = format!("DataFusion error: {datafusion_error}");
+                PyErr::new::<PyTypeError, _>(msg)
+            })
+    }
 
     // TODO: defer, not sure we need it
     // pub fn arrow_schema(&self) -> Arc<Schema> {
@@ -217,14 +314,15 @@ pub struct Hnsw(hnsw::Hnsw);
 #[pymethods]
 impl Hnsw {
 
-    // pub async fn from_loader(
-    //     loader: &dyn HnswLoader
-    // ) -> Result<Self, DataFusionError> {
-    //     // TODO: Provide a way to
-    //     //       1. obtain a `serialize::HnswLoader` instance, or
-    //     //       2. load from a DataFusion DataFrame
-    //     todo!() // TODO
-    // }
+    #[staticmethod]
+    pub async fn from_loader(loader: HnswLoader) -> PyResult<Self> {
+        hnsw::Hnsw::from_loader(&*loader.0).await
+            .map(Self)
+            .map_err(|datafusion_error| {
+                let msg = format!("DataFusion error: {datafusion_error}");
+                PyErr::new::<PyTypeError, _>(msg)
+            })
+    }
 
     pub fn metadata(&self) -> HnswMetadata {
         HnswMetadata(self.0.metadata())

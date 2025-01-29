@@ -2,7 +2,6 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     os::{
-        fd::AsRawFd,
         unix::fs::{FileExt, MetadataExt},
     },
     path::{Path, PathBuf},
@@ -23,7 +22,7 @@ use datafusion::{
     error::DataFusionError,
     execution::SendableRecordBatchStream,
 };
-use futures::{stream, TryStreamExt};
+use futures::TryStreamExt;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -108,9 +107,10 @@ impl Vectors {
         let vector_file = OpenOptions::new()
             .read(true)
             .open(Self::vec_path(directory, identity))?;
-        let raw_fd = vector_file.as_raw_fd();
         #[cfg(target_os = "linux")]
         unsafe {
+            use std::os::fd::AsRawFd;
+            let raw_fd = vector_file.as_raw_fd();
             // The `libc::posix_fadvise()` fn doesn't exist on e.g. MacOS.
             // Therefore, only use this optimization when it's available.
             assert_eq!(

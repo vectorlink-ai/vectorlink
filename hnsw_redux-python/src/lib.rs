@@ -79,7 +79,8 @@ impl Vectors {
         if index < self.num_vecs() {
             Ok(&self.0[index])
         } else {
-            Err(PyIndexError::new_err("error message"))
+            let msg = format!("Index {index} is out of bounds");
+            Err(PyIndexError::new_err(msg))
         }
     }
 

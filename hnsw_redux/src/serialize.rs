@@ -2,7 +2,6 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
     os::{
-        fd::AsRawFd,
         unix::fs::{FileExt, MetadataExt},
     },
     path::{Path, PathBuf},
@@ -22,11 +21,8 @@ use datafusion::{
     },
     error::DataFusionError,
     execution::SendableRecordBatchStream,
-    physical_plan::stream::RecordBatchStreamAdapter,
 };
-use futures::{stream, TryStreamExt};
-use itertools::Itertools;
-use lazy_static::lazy_static;
+use futures::TryStreamExt;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -43,10 +39,13 @@ pub struct VectorsMetadata {
     pub vector_byte_size: usize,
 }
 
+// Send + Sync super traits are necessary for pyo3 / maturin bindings
 #[async_trait]
-pub trait VectorsLoader {
+pub trait VectorsLoader: Send + Sync {
     fn vector_byte_size(&self) -> usize;
+
     fn number_of_vectors(&self) -> usize;
+
     async fn load(&self) -> SendableRecordBatchStream;
 }
 
@@ -72,27 +71,27 @@ impl Vectors {
         }
         Ok(Self::new(data, meta.vector_byte_size))
     }
-}
 
-impl Vectors {
     fn vec_path(directory: &Path, identity: &str) -> PathBuf {
         directory.join(format!("{identity}.vecs"))
     }
+
     fn meta_path(directory: &Path, identity: &str) -> PathBuf {
         directory.join(format!("{identity}.metadata.json"))
     }
+
     fn metadata(&self) -> VectorsMetadata {
         VectorsMetadata {
             vector_byte_size: self.vector_byte_size(),
         }
     }
+
     pub fn store<P: AsRef<Path>>(&self, directory: P, identity: &str) -> io::Result<()> {
         let directory = directory.as_ref();
         let mut vec_file = File::create(Self::vec_path(directory, identity))?;
         vec_file.write_all(self.data())?;
         let metadata_file = File::create(Self::meta_path(directory, identity))?;
         serde_json::to_writer(metadata_file, &self.metadata())?;
-
         Ok(())
     }
 
@@ -108,8 +107,12 @@ impl Vectors {
         let vector_file = OpenOptions::new()
             .read(true)
             .open(Self::vec_path(directory, identity))?;
-        let raw_fd = vector_file.as_raw_fd();
+        #[cfg(target_os = "linux")]
         unsafe {
+            use std::os::fd::AsRawFd;
+            let raw_fd = vector_file.as_raw_fd();
+            // The `libc::posix_fadvise()` fn doesn't exist on e.g. MacOS.
+            // Therefore, only use this optimization when it's available.
             assert_eq!(
                 libc::posix_fadvise(raw_fd, 0, 0, libc::POSIX_FADV_SEQUENTIAL),
                 0,
@@ -143,9 +146,17 @@ pub struct LayerMetadata {
     single_neighborhood_size: usize,
 }
 
+impl LayerMetadata {
+    pub fn single_neighborhood_size(&self) -> usize {
+        self.single_neighborhood_size
+    }
+}
+
+// Send + Sync super traits are necessary for pyo3 / maturin bindings
 #[async_trait]
-pub trait LayerLoader {
+pub trait LayerLoader: Send + Sync {
     fn number_of_neighborhoods(&self) -> usize;
+
     async fn load(&self) -> SendableRecordBatchStream;
 }
 
@@ -179,10 +190,6 @@ impl Layer {
         } else {
             panic!("argh");
         }
-    }
-
-    fn arrow_schema_() -> Arc<Schema> {
-        todo!();
     }
 
     pub fn arrow_schema(&self) -> Arc<Schema> {
@@ -249,10 +256,8 @@ impl Layer {
         RecordBatch::try_new(schema, vec![indexes_array, neighborhoods_array])
             .expect("failed to produce record batch")
     }
-}
 
-impl Layer {
-    fn metadata(&self) -> LayerMetadata {
+    pub fn metadata(&self) -> LayerMetadata {
         LayerMetadata {
             single_neighborhood_size: self.single_neighborhood_size(),
         }
@@ -261,9 +266,11 @@ impl Layer {
     fn neighbors_path(directory: &Path, layer_index: usize) -> PathBuf {
         directory.join(format!("layer.{layer_index}.neighbors"))
     }
+
     fn meta_path(directory: &Path, layer_index: usize) -> PathBuf {
         directory.join(format!("layer.{layer_index}.metadata.json"))
     }
+
     pub fn store<P: AsRef<Path>>(&self, directory: P, layer_index: usize) -> io::Result<()> {
         let directory = directory.as_ref();
         let data = self.raw_data();
@@ -298,11 +305,21 @@ pub struct HnswMetadata {
     layer_count: usize,
 }
 
+impl HnswMetadata {
+    pub fn layer_count(&self) -> usize {
+        self.layer_count
+    }
+}
+
+// Send + Sync super traits are necessary for pyo3 / maturin bindings
 #[async_trait]
-pub trait HnswLoader {
+pub trait HnswLoader: Send + Sync {
     fn layer_count(&self) -> usize;
-    async fn get_layer_loader(&self, index: usize)
-        -> Result<Box<dyn LayerLoader>, DataFusionError>;
+
+    async fn get_layer_loader(
+        &self,
+        index: usize
+    ) -> Result<Arc<dyn LayerLoader>, DataFusionError>;
 }
 
 impl Hnsw {
@@ -317,14 +334,13 @@ impl Hnsw {
 
         Ok(Self::new(layers))
     }
-}
 
-impl Hnsw {
-    fn metadata(&self) -> HnswMetadata {
+    pub fn metadata(&self) -> HnswMetadata {
         HnswMetadata {
             layer_count: self.layer_count(),
         }
     }
+
     fn meta_path(directory: &Path) -> PathBuf {
         directory.join("hnsw.json")
     }

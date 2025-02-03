@@ -27,6 +27,7 @@ mkShell {
       # they will be reinstalled when running `pip -r requirements.txt` because
       # virtualenv is used below in the shellHook. Fkn virtualenv :/
       ipython
+      datafusion
       pip
       setuptools
       virtualenvwrapper

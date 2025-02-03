@@ -1,30 +1,37 @@
 #![allow(unused)] // TODO: remove
 
-use datafusion::{
-    arrow::array::RecordBatch,
-    execution::RecordBatchStream
-};
 use ::datafusion::{
-    arrow::datatypes::Schema,
-    error::DataFusionError,
+    arrow::datatypes::Schema, error::DataFusionError,
     execution::SendableRecordBatchStream,
 };
 use ::hnsw_redux::{
-    hnsw,
-    index,
-    layer,
-    serialize,
-    util,
+    hnsw, index, layer, serialize,
+    util::{self, SimdAlignedAllocation},
     vectors,
 };
 use ::pyo3::{
     exceptions::{PyException, PyIndexError, PyTypeError},
     prelude::*,
     pyclass::PyClass,
-    types::{IntoPyDict, PyDict, PyCapsule},
+    types::{IntoPyDict, PyCapsule, PyDict},
 };
-use std::sync::Arc;
-
+use async_trait::async_trait;
+use datafusion::{
+    arrow::{
+        alloc,
+        array::{RecordBatch, RecordBatchReader},
+        datatypes::DataType,
+        ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
+    },
+    execution::RecordBatchStream,
+    physical_plan::stream::RecordBatchStreamAdapter,
+};
+use pyo3::types::PyType;
+use std::{
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
+use tokio_stream::StreamExt;
 
 // This function defines a Python module. Its name MUST match the the `lib.name`
 // settings in `Cargo.toml`, else Python will not be able to import the module.
@@ -40,9 +47,11 @@ fn hnsw_redux(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Hnsw1024>()?;
     m.add_class::<Hnsw1536>()?;
     m.add_class::<IndexConfiguration>()?;
+    m.add_class::<VectorsLoader>()?;
+    m.add_class::<LayerLoader>()?;
+    m.add_class::<HnswLoader>()?;
     Ok(())
 }
-
 
 #[pyclass(module = "hnsw_redux")]
 pub struct Vectors(vectors::Vectors);
@@ -60,19 +69,82 @@ impl Vectors {
     }
 
     #[staticmethod]
-    pub fn from_file(filepath: &str, vector_byte_size: usize) -> PyResult<Self> {
-        Ok(Self(vectors::Vectors::from_file(filepath, vector_byte_size)?))
+    pub fn from_file(
+        filepath: &str,
+        vector_byte_size: usize,
+    ) -> PyResult<Self> {
+        Ok(Self(vectors::Vectors::from_file(
+            filepath,
+            vector_byte_size,
+        )?))
     }
 
     #[staticmethod]
-    pub async fn from_loader(loader: VectorsLoader) -> PyResult<Self> {
-        vectors::Vectors::from_loader(&*loader.0).await
-            .map(Self)
-            .map_err(|datafusion_error| {
-                let msg = format!("DataFusion error: {datafusion_error}");
-                PyErr::new::<PyTypeError, _>(msg)
-            })
+    pub fn from_arrow(
+        arrow_stream: Bound<'_, PyCapsule>,
+        number_of_records: usize,
+    ) -> PyResult<Self> {
+        let arrow_stream = arrow_stream.as_ptr() as *mut FFI_ArrowArrayStream;
+        // TODO we need an error type
+        let reader =
+            unsafe { ArrowArrayStreamReader::from_raw(arrow_stream) }.unwrap();
+        let schema = reader.schema();
+        let col_type = schema.field(0).data_type();
+        let mut offset = 0;
+        if let DataType::FixedSizeList(_, single_vector_size) = col_type {
+            let single_vector_size: usize =
+                (*single_vector_size).try_into().unwrap();
+            let mut destination = unsafe {
+                SimdAlignedAllocation::<u8>::alloc(
+                    number_of_records
+                        * single_vector_size
+                        * std::mem::size_of::<f32>(),
+                )
+            };
+            for batch in reader {
+                let batch = batch.unwrap();
+                let count = batch.num_rows();
+                let float_count = count * single_vector_size;
+                let col = batch.column(0);
+                // TODO this might incur a copy. that's stupid.
+                let data = col.to_data();
+
+                let data_slice: &[u8] = unsafe {
+                    std::slice::from_raw_parts(
+                        data.buffers().last().unwrap().as_ptr(),
+                        float_count * std::mem::size_of::<f32>(),
+                    )
+                };
+                let destination_slice =
+                    &mut destination[offset..offset + float_count];
+                destination_slice.copy_from_slice(data_slice);
+
+                offset += float_count;
+            }
+
+            return Ok(Vectors::new(
+                SimdAlignedAllocationU8(destination),
+                single_vector_size * std::mem::size_of::<f32>(),
+            ));
+        }
+
+        panic!("bad datatype");
     }
+
+    /*
+    #[staticmethod]
+    pub async fn from_loader(loader: VectorsLoader) -> PyResult<Self> {
+        vectors::Vectors::from_loader(
+            &mut *loader.0.lock().expect("poisoned lock"),
+        )
+        .await
+        .map(Self)
+        .map_err(|datafusion_error| {
+            let msg = format!("DataFusion error: {datafusion_error}");
+            PyErr::new::<PyTypeError, _>(msg)
+        })
+    }
+    */
 
     pub fn num_vecs(&self) -> usize {
         self.0.num_vecs()
@@ -127,9 +199,7 @@ impl Vectors {
     }
 }
 
-
-
-#[pyclass]
+#[pyclass(module = "hnsw_redux")]
 #[derive(Clone)]
 pub struct VectorsLoader(Arc<dyn serialize::VectorsLoader>);
 
@@ -148,10 +218,71 @@ impl From<Arc<dyn serialize::VectorsLoader>> for VectorsLoader {
 unsafe impl Send for VectorsLoader {}
 unsafe impl Sync for VectorsLoader {}
 
+pub struct ArrowVectorsLoader {
+    stream: Pin<Box<dyn RecordBatchStream + Send + Sync>>,
+    vector_byte_size: usize,
+    number_of_vectors: usize,
+}
 
+/*
+#[async_trait]
+impl serialize::VectorsLoader for ArrowVectorsLoader {
+    fn vector_byte_size(&self) -> usize {
+        self.vector_byte_size
+    }
 
+    fn number_of_vectors(&self) -> usize {
+        self.number_of_vectors
+    }
 
-#[pyclass]
+    async fn load(&mut self) -> SendableRecordBatchStream {
+        loop {
+            let next = self.stream.next().await;
+            /*
+            match next {
+                Some(Ok(next)) => todo!(),
+                Some(Err(e)) => todo!(),
+                None => todo!(),
+            }
+            */
+        }
+        todo!();
+    }
+}
+
+#[pymethods]
+impl VectorsLoader {
+    #[classmethod]
+    fn from_arrow_c_stream(
+        cls: &Bound<'_, PyType>,
+        capsule: Bound<'_, PyCapsule>,
+        vector_byte_size: usize,
+        number_of_vectors: usize,
+    ) -> Self {
+        let stream = unsafe { capsule.pointer() as *mut FFI_ArrowArrayStream };
+        eprintln!("constructed stream");
+        let reader =
+            unsafe { ArrowArrayStreamReader::from_raw(stream).unwrap() };
+        let schema = reader.schema();
+
+        let stream = tokio_stream::iter(reader);
+        let wrapped_stream = RecordBatchStreamAdapter::new(
+            schema,
+            stream.map(|r| r.map_err(Into::into)),
+        );
+
+        let loader = ArrowVectorsLoader {
+            stream: Box::pin(wrapped_stream),
+            vector_byte_size,
+            number_of_vectors,
+        };
+
+        Self(Arc::new(loader))
+    }
+}
+*/
+
+#[pyclass(module = "hnsw_redux")]
 #[derive(Clone)]
 pub struct LayerLoader(Arc<dyn serialize::LayerLoader>);
 
@@ -170,9 +301,7 @@ impl From<Arc<dyn serialize::LayerLoader>> for LayerLoader {
 unsafe impl Send for LayerLoader {}
 unsafe impl Sync for LayerLoader {}
 
-
-
-#[pyclass]
+#[pyclass(module = "hnsw_redux")]
 #[derive(Clone)]
 pub struct HnswLoader(Arc<dyn serialize::HnswLoader>);
 
@@ -184,7 +313,7 @@ impl HnswLoader {
 
     async fn get_layer_loader(
         &self,
-        index: usize
+        index: usize,
     ) -> Result<LayerLoader, DataFusionError> {
         let loader = self.0.get_layer_loader(index).await?;
         Ok(LayerLoader(loader))
@@ -199,10 +328,6 @@ impl From<Arc<dyn serialize::HnswLoader>> for HnswLoader {
 
 unsafe impl Send for HnswLoader {}
 unsafe impl Sync for HnswLoader {}
-
-
-
-
 
 // PyO3 / Maturin require that no generics are used at FFI boundaries.
 // This means that for types like `hnsw_redux::util::SimdAlignedAllocation<E>`,
@@ -255,21 +380,20 @@ macro_rules! wrap_SimdAlignedAllocation_type_for_element {
 // are needed for `self::Vectors::new()`
 wrap_SimdAlignedAllocation_type_for_element![u8];
 
-
-
 #[pyclass(module = "hnsw_redux")]
 pub struct LayerMetadata(serialize::LayerMetadata);
-
 
 #[pyclass(module = "hnsw_redux")]
 pub struct Layer(::hnsw_redux::layer::Layer);
 
 #[pymethods]
 impl Layer {
-
     #[staticmethod]
-    pub async fn from_loader(loader: LayerLoader) -> PyResult<Self/*, DataFusionError*/> {
-        layer::Layer::from_loader(&*loader.0).await
+    pub async fn from_loader(
+        loader: LayerLoader,
+    ) -> PyResult<Self /*, DataFusionError*/> {
+        layer::Layer::from_loader(&*loader.0)
+            .await
             .map(Self)
             .map_err(|datafusion_error| {
                 let msg = format!("DataFusion error: {datafusion_error}");
@@ -292,10 +416,12 @@ impl Layer {
 
     #[staticmethod]
     pub fn load(dirpath: &str, layer_index: usize) -> PyResult<Layer> {
-        Ok(Self(::hnsw_redux::layer::Layer::load(dirpath, layer_index)?))
+        Ok(Self(::hnsw_redux::layer::Layer::load(
+            dirpath,
+            layer_index,
+        )?))
     }
 }
-
 
 #[pyclass(module = "hnsw_redux")]
 pub struct HnswMetadata(serialize::HnswMetadata);
@@ -307,21 +433,19 @@ impl HnswMetadata {
     }
 }
 
-
 #[pyclass(module = "hnsw_redux")]
 pub struct Hnsw(hnsw::Hnsw);
 
 #[pymethods]
 impl Hnsw {
-
     #[staticmethod]
     pub async fn from_loader(loader: HnswLoader) -> PyResult<Self> {
-        hnsw::Hnsw::from_loader(&*loader.0).await
-            .map(Self)
-            .map_err(|datafusion_error| {
+        hnsw::Hnsw::from_loader(&*loader.0).await.map(Self).map_err(
+            |datafusion_error| {
                 let msg = format!("DataFusion error: {datafusion_error}");
                 PyErr::new::<PyTypeError, _>(msg)
-            })
+            },
+        )
     }
 
     pub fn metadata(&self) -> HnswMetadata {
@@ -338,10 +462,8 @@ impl Hnsw {
     }
 }
 
-
 #[pyclass(module = "hnsw_redux")]
 pub struct HnswType(serialize::HnswType);
-
 
 macro_rules! wrap_index_type {
     ($($type:ident),* $(,)?) => {
@@ -373,9 +495,6 @@ macro_rules! wrap_index_type {
 }
 
 wrap_index_type![Hnsw1024, Hnsw1536, IndexConfiguration];
-
-
-
 
 // TODO HNSW:
 // - access beams

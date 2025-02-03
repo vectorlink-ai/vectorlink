@@ -1,9 +1,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
-    os::{
-        unix::fs::{FileExt, MetadataExt},
-    },
+    os::unix::fs::{FileExt, MetadataExt},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -12,8 +10,8 @@ use async_trait::async_trait;
 use datafusion::{
     arrow::{
         array::{
-            Array, FixedSizeListArray, RecordBatch, RecordBatchIterator, RecordBatchReader,
-            UInt32Array,
+            Array, FixedSizeListArray, RecordBatch, RecordBatchIterator,
+            RecordBatchReader, UInt32Array,
         },
         buffer::{Buffer, ScalarBuffer},
         datatypes::{DataType, Field, Schema},
@@ -50,11 +48,14 @@ pub trait VectorsLoader: Send + Sync {
 }
 
 impl Vectors {
-    pub async fn from_loader(loader: &dyn VectorsLoader) -> Result<Self, DataFusionError> {
+    pub async fn from_loader(
+        loader: &dyn VectorsLoader,
+    ) -> Result<Self, DataFusionError> {
         let vector_byte_size = loader.vector_byte_size();
         let meta = VectorsMetadata { vector_byte_size };
         let total_file_size = vector_byte_size * loader.number_of_vectors();
-        let mut data = unsafe { SimdAlignedAllocation::<u8>::alloc(total_file_size) };
+        let mut data =
+            unsafe { SimdAlignedAllocation::<u8>::alloc(total_file_size) };
 
         let mut stream = loader.load().await;
         let mut ingested = 0;
@@ -86,7 +87,11 @@ impl Vectors {
         }
     }
 
-    pub fn store<P: AsRef<Path>>(&self, directory: P, identity: &str) -> io::Result<()> {
+    pub fn store<P: AsRef<Path>>(
+        &self,
+        directory: P,
+        identity: &str,
+    ) -> io::Result<()> {
         let directory = directory.as_ref();
         let mut vec_file = File::create(Self::vec_path(directory, identity))?;
         vec_file.write_all(self.data())?;
@@ -95,12 +100,16 @@ impl Vectors {
         Ok(())
     }
 
-    pub fn load<P: AsRef<Path>>(directory: P, identity: &str) -> io::Result<Self> {
+    pub fn load<P: AsRef<Path>>(
+        directory: P,
+        identity: &str,
+    ) -> io::Result<Self> {
         eprintln!("loading from {:?} as {identity}", directory.as_ref());
         let directory = directory.as_ref();
         let metadata_path = Self::meta_path(directory, identity);
 
-        let meta: VectorsMetadata = serde_json::from_reader(File::open(metadata_path)?)?;
+        let meta: VectorsMetadata =
+            serde_json::from_reader(File::open(metadata_path)?)?;
 
         // we don't want this read to be buffered, because vector
         // files are huge, and buffering is expensive.
@@ -124,8 +133,9 @@ impl Vectors {
                 "fadvice (dontneed) failed"
             );
         }
-        let mut data =
-            unsafe { SimdAlignedAllocation::alloc(vector_file.metadata()?.size() as usize) };
+        let mut data = unsafe {
+            SimdAlignedAllocation::alloc(vector_file.metadata()?.size() as usize)
+        };
         eprintln!("allocated");
         const PART_SIZE: usize = 1 << 30;
         data.par_chunks_mut(PART_SIZE)
@@ -161,12 +171,16 @@ pub trait LayerLoader: Send + Sync {
 }
 
 impl Layer {
-    pub async fn from_loader(loader: &dyn LayerLoader) -> Result<Self, DataFusionError> {
+    pub async fn from_loader(
+        loader: &dyn LayerLoader,
+    ) -> Result<Self, DataFusionError> {
         let number_of_neighborhoods = loader.number_of_neighborhoods();
         let mut stream = loader.load().await;
         let schema = stream.schema();
         let (col_index, field) = schema.column_with_name("neighbors").unwrap();
-        if let DataType::FixedSizeList(inner_field, single_neighborhood_size) = field.data_type() {
+        if let DataType::FixedSizeList(inner_field, single_neighborhood_size) =
+            field.data_type()
+        {
             let single_neighborhood_size = *single_neighborhood_size as usize;
             let mut neighborhoods = unsafe {
                 SimdAlignedAllocation::<u32>::alloc(
@@ -178,7 +192,8 @@ impl Layer {
             while let Some(batch) = stream.try_next().await? {
                 let batch_size = batch.num_rows();
                 let start_offset = offset * single_neighborhood_size;
-                let end_offset = start_offset + batch_size * single_neighborhood_size;
+                let end_offset =
+                    start_offset + batch_size * single_neighborhood_size;
                 let slice = &mut neighborhoods[start_offset..end_offset];
                 let col = batch.column(col_index).to_data();
                 let data: &[u32] = col.buffer(batch_size);
@@ -194,7 +209,8 @@ impl Layer {
 
     pub fn arrow_schema(&self) -> Arc<Schema> {
         // TODO this should cache
-        let neighbor_field = Arc::new(Field::new("item".to_string(), DataType::UInt32, false));
+        let neighbor_field =
+            Arc::new(Field::new("item".to_string(), DataType::UInt32, false));
 
         let neighborhood_field = Arc::new(Field::new(
             "neighborhood".to_string(),
@@ -204,12 +220,16 @@ impl Layer {
             ),
             false,
         ));
-        let index_field = Arc::new(Field::new("index", DataType::UInt32, false));
+        let index_field =
+            Arc::new(Field::new("index", DataType::UInt32, false));
 
         Arc::new(Schema::new([index_field, neighborhood_field]))
     }
 
-    pub fn neighborhood_arrow_reader(&self, batch_size: usize) -> impl RecordBatchReader + '_ {
+    pub fn neighborhood_arrow_reader(
+        &self,
+        batch_size: usize,
+    ) -> impl RecordBatchReader + '_ {
         let schema = self.arrow_schema();
         RecordBatchIterator::new(self.neighborhood_batches(batch_size), schema)
     }
@@ -223,7 +243,11 @@ impl Layer {
             .map(move |i| Ok(self.neighborhood_batch(i, batch_size)))
     }
 
-    pub fn neighborhood_batch(&self, index: usize, batch_size: usize) -> RecordBatch {
+    pub fn neighborhood_batch(
+        &self,
+        index: usize,
+        batch_size: usize,
+    ) -> RecordBatch {
         let schema = self.arrow_schema();
         let start_offset = index * self.single_neighborhood_size();
         let end_offset = std::cmp::min(
@@ -231,8 +255,9 @@ impl Layer {
             self.neighborhoods().len(),
         );
         let len = end_offset - start_offset;
-        let neighborhood_buf =
-            Buffer::from_slice_ref(&self.neighborhoods()[start_offset..end_offset]);
+        let neighborhood_buf = Buffer::from_slice_ref(
+            &self.neighborhoods()[start_offset..end_offset],
+        );
         let scalar_buf = ScalarBuffer::new(neighborhood_buf, 0, len);
         let array = Arc::new(UInt32Array::new(scalar_buf, None));
         let neighbor_field = match schema
@@ -243,15 +268,16 @@ impl Layer {
             DataType::FixedSizeList(field, _) => field.clone(),
             _ => panic!("field not of expected type"),
         };
-        let neighborhoods_array: Arc<dyn Array> = Arc::new(FixedSizeListArray::new(
-            neighbor_field,
-            self.single_neighborhood_size() as i32,
-            array,
-            None,
-        ));
-        let indexes_array: Arc<dyn Array> = Arc::new(UInt32Array::from_iter_values(
-            index as u32..(index + len) as u32,
-        ));
+        let neighborhoods_array: Arc<dyn Array> =
+            Arc::new(FixedSizeListArray::new(
+                neighbor_field,
+                self.single_neighborhood_size() as i32,
+                array,
+                None,
+            ));
+        let indexes_array: Arc<dyn Array> = Arc::new(
+            UInt32Array::from_iter_values(index as u32..(index + len) as u32),
+        );
 
         RecordBatch::try_new(schema, vec![indexes_array, neighborhoods_array])
             .expect("failed to produce record batch")
@@ -271,22 +297,32 @@ impl Layer {
         directory.join(format!("layer.{layer_index}.metadata.json"))
     }
 
-    pub fn store<P: AsRef<Path>>(&self, directory: P, layer_index: usize) -> io::Result<()> {
+    pub fn store<P: AsRef<Path>>(
+        &self,
+        directory: P,
+        layer_index: usize,
+    ) -> io::Result<()> {
         let directory = directory.as_ref();
         let data = self.raw_data();
         fs::write(Self::neighbors_path(directory, layer_index), data)?;
 
-        let metadata_file = File::create(Self::meta_path(directory, layer_index))?;
+        let metadata_file =
+            File::create(Self::meta_path(directory, layer_index))?;
         serde_json::to_writer(metadata_file, &self.metadata())?;
 
         Ok(())
     }
 
-    pub fn load<P: AsRef<Path>>(directory: P, layer_index: usize) -> io::Result<Layer> {
+    pub fn load<P: AsRef<Path>>(
+        directory: P,
+        layer_index: usize,
+    ) -> io::Result<Layer> {
         let directory = directory.as_ref();
-        let metadata: LayerMetadata =
-            serde_json::from_reader(File::open(Self::meta_path(directory, layer_index))?)?;
-        let mut data_file = File::open(Self::neighbors_path(directory, layer_index))?;
+        let metadata: LayerMetadata = serde_json::from_reader(File::open(
+            Self::meta_path(directory, layer_index),
+        )?)?;
+        let mut data_file =
+            File::open(Self::neighbors_path(directory, layer_index))?;
         let data_size = data_file.metadata()?.size();
         let mut data: SimdAlignedAllocation<u8> =
             unsafe { SimdAlignedAllocation::alloc(data_size as usize) };
@@ -318,12 +354,14 @@ pub trait HnswLoader: Send + Sync {
 
     async fn get_layer_loader(
         &self,
-        index: usize
+        index: usize,
     ) -> Result<Arc<dyn LayerLoader>, DataFusionError>;
 }
 
 impl Hnsw {
-    pub async fn from_loader(loader: &dyn HnswLoader) -> Result<Self, DataFusionError> {
+    pub async fn from_loader(
+        loader: &dyn HnswLoader,
+    ) -> Result<Self, DataFusionError> {
         let layer_count = loader.layer_count();
         let mut layers = Vec::with_capacity(layer_count);
         for i in 0..layer_count {
@@ -352,7 +390,10 @@ impl Hnsw {
             layer.store(directory, i)?;
         }
 
-        serde_json::to_writer(File::create(Self::meta_path(directory))?, &self.metadata())?;
+        serde_json::to_writer(
+            File::create(Self::meta_path(directory))?,
+            &self.metadata(),
+        )?;
 
         Ok(())
     }
@@ -397,9 +438,12 @@ impl Hnsw1024 {
         vector_directory: P2,
     ) -> io::Result<Self> {
         let hnsw_root_directory = hnsw_root_directory.as_ref();
-        let hnsw_path = IndexConfiguration::hnsw_path(name, hnsw_root_directory);
-        let meta_path = IndexConfiguration::meta_path(name, hnsw_root_directory);
-        let metadata: HnswConfigurationMetadata = serde_json::from_reader(File::open(meta_path)?)?;
+        let hnsw_path =
+            IndexConfiguration::hnsw_path(name, hnsw_root_directory);
+        let meta_path =
+            IndexConfiguration::meta_path(name, hnsw_root_directory);
+        let metadata: HnswConfigurationMetadata =
+            serde_json::from_reader(File::open(meta_path)?)?;
         assert_eq!(metadata.hnsw_type, HnswType::Hnsw1024);
 
         let hnsw = Hnsw::load(hnsw_path)?;
@@ -409,12 +453,17 @@ impl Hnsw1024 {
         Ok(Self::new(name.to_string(), hnsw, vectors))
     }
 
-    pub fn store_hnsw<P: AsRef<Path>>(&self, hnsw_directory: P) -> io::Result<()> {
+    pub fn store_hnsw<P: AsRef<Path>>(
+        &self,
+        hnsw_directory: P,
+    ) -> io::Result<()> {
         eprintln!("storing hnsw");
         let hnsw_root_directory = hnsw_directory.as_ref();
         let metadata = self.metadata();
-        let hnsw_path = IndexConfiguration::hnsw_path(&metadata.name, hnsw_root_directory);
-        let metadata_path = IndexConfiguration::meta_path(&metadata.name, hnsw_root_directory);
+        let hnsw_path =
+            IndexConfiguration::hnsw_path(&metadata.name, hnsw_root_directory);
+        let metadata_path =
+            IndexConfiguration::meta_path(&metadata.name, hnsw_root_directory);
         fs::create_dir_all(&hnsw_path)?;
         serde_json::to_writer(File::create(metadata_path)?, &metadata)?;
         self.hnsw().store(hnsw_path)?;
@@ -437,9 +486,12 @@ impl Hnsw1536 {
         vector_directory: P2,
     ) -> io::Result<Self> {
         let hnsw_root_directory = hnsw_root_directory.as_ref();
-        let hnsw_path = IndexConfiguration::hnsw_path(name, hnsw_root_directory);
-        let meta_path = IndexConfiguration::meta_path(name, hnsw_root_directory);
-        let metadata: HnswConfigurationMetadata = serde_json::from_reader(File::open(meta_path)?)?;
+        let hnsw_path =
+            IndexConfiguration::hnsw_path(name, hnsw_root_directory);
+        let meta_path =
+            IndexConfiguration::meta_path(name, hnsw_root_directory);
+        let metadata: HnswConfigurationMetadata =
+            serde_json::from_reader(File::open(meta_path)?)?;
         assert_eq!(metadata.hnsw_type, HnswType::Hnsw1536);
 
         let hnsw = Hnsw::load(hnsw_path)?;
@@ -449,12 +501,17 @@ impl Hnsw1536 {
         Ok(Self::new(name.to_string(), hnsw, vectors))
     }
 
-    pub fn store_hnsw<P: AsRef<Path>>(&self, hnsw_directory: P) -> io::Result<()> {
+    pub fn store_hnsw<P: AsRef<Path>>(
+        &self,
+        hnsw_directory: P,
+    ) -> io::Result<()> {
         eprintln!("storing hnsw");
         let hnsw_root_directory = hnsw_directory.as_ref();
         let metadata = self.metadata();
-        let hnsw_path = IndexConfiguration::hnsw_path(&metadata.name, hnsw_root_directory);
-        let metadata_path = IndexConfiguration::meta_path(&metadata.name, hnsw_root_directory);
+        let hnsw_path =
+            IndexConfiguration::hnsw_path(&metadata.name, hnsw_root_directory);
+        let metadata_path =
+            IndexConfiguration::meta_path(&metadata.name, hnsw_root_directory);
         fs::create_dir_all(&hnsw_path)?;
         serde_json::to_writer(File::create(metadata_path)?, &metadata)?;
         self.hnsw().store(hnsw_path)?;
@@ -478,24 +535,35 @@ impl IndexConfiguration {
         vector_directory: P2,
     ) -> io::Result<Self> {
         let hnsw_root_directory = hnsw_root_directory.as_ref();
-        let meta_path = IndexConfiguration::meta_path(name, hnsw_root_directory);
-        let metadata: HnswConfigurationMetadata = serde_json::from_reader(File::open(meta_path)?)?;
+        let meta_path =
+            IndexConfiguration::meta_path(name, hnsw_root_directory);
+        let metadata: HnswConfigurationMetadata =
+            serde_json::from_reader(File::open(meta_path)?)?;
 
         match metadata.hnsw_type {
             HnswType::Hnsw1024 => {
-                Ok(Hnsw1024::load(name, hnsw_root_directory, vector_directory)?.into())
+                Ok(Hnsw1024::load(name, hnsw_root_directory, vector_directory)?
+                    .into())
             }
             HnswType::Hnsw1536 => {
-                Ok(Hnsw1536::load(name, hnsw_root_directory, vector_directory)?.into())
+                Ok(Hnsw1536::load(name, hnsw_root_directory, vector_directory)?
+                    .into())
             }
             HnswType::Quantized128x8 => todo!(),
         }
     }
-    pub fn store_hnsw<P: AsRef<Path>>(&self, hnsw_directory: P) -> io::Result<()> {
+    pub fn store_hnsw<P: AsRef<Path>>(
+        &self,
+        hnsw_directory: P,
+    ) -> io::Result<()> {
         eprintln!("storing index configuration");
         match self {
-            IndexConfiguration::Hnsw1536(hnsw) => hnsw.store_hnsw(hnsw_directory),
-            IndexConfiguration::Hnsw1024(hnsw) => hnsw.store_hnsw(hnsw_directory),
+            IndexConfiguration::Hnsw1536(hnsw) => {
+                hnsw.store_hnsw(hnsw_directory)
+            }
+            IndexConfiguration::Hnsw1024(hnsw) => {
+                hnsw.store_hnsw(hnsw_directory)
+            }
             IndexConfiguration::Pq1024x8(_pq) => todo!(),
         }
     }

@@ -7,12 +7,15 @@ let
     # (e.g. `$VENV/bin/python`) becomes stale and breaks.
 
     VENV=.venv
-    if test -d $VENV; then
+    # Test for the existence of:
+    #   * The existence of the $VENV directory
+    #   * The *POINTEE* of the `$VENV/bin/python` symlink:
+    if [[ !(-d $VENV  &&  -f $VENV/bin/python) ]]; then
       rm -rf $VENV  # Remove any existing virtualenv
+      virtualenv $VENV  # Setup a fresh virtualenv
+      source ./$VENV/bin/activate
+      export PYTHONPATH=`pwd`/$VENV/${pkgs.python3.sitePackages}/:$PYTHONPATH
     fi
-    virtualenv $VENV  # Setup a fresh virtualenv
-    source ./$VENV/bin/activate
-    export PYTHONPATH=`pwd`/$VENV/${pkgs.python3.sitePackages}/:$PYTHONPATH
   '';
 in
 mkShell {

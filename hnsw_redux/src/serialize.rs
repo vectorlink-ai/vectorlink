@@ -6,7 +6,6 @@ use std::{
     sync::Arc,
 };
 
-use async_trait::async_trait;
 use datafusion::{
     arrow::{
         array::{
@@ -17,10 +16,7 @@ use datafusion::{
         datatypes::{DataType, Field, Schema},
         error::ArrowError,
     },
-    error::DataFusionError,
-    execution::SendableRecordBatchStream,
 };
-use futures::TryStreamExt;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -37,42 +33,7 @@ pub struct VectorsMetadata {
     pub vector_byte_size: usize,
 }
 
-// Send + Sync super traits are necessary for pyo3 / maturin bindings
-#[async_trait]
-pub trait VectorsLoader: Send + Sync {
-    fn vector_byte_size(&self) -> usize;
-
-    fn number_of_vectors(&self) -> usize;
-
-    async fn load(&self) -> SendableRecordBatchStream;
-}
-
 impl Vectors {
-    pub async fn from_loader(
-        loader: &dyn VectorsLoader,
-    ) -> Result<Self, DataFusionError> {
-        let vector_byte_size = loader.vector_byte_size();
-        let meta = VectorsMetadata { vector_byte_size };
-        let total_file_size = vector_byte_size * loader.number_of_vectors();
-        let mut data =
-            unsafe { SimdAlignedAllocation::<u8>::alloc(total_file_size) };
-
-        let mut stream = loader.load().await;
-        let mut ingested = 0;
-        while let Some(batch) = stream.try_next().await? {
-            let num_rows = batch.num_rows();
-            let batch_size = num_rows * vector_byte_size;
-            let start_offset = ingested * vector_byte_size;
-            let end_offset = start_offset + num_rows * vector_byte_size;
-            let slice = &mut data[start_offset..end_offset];
-            let col = batch.column(0).to_data();
-            let data: &[u8] = col.buffer(batch_size);
-            slice.copy_from_slice(data);
-            ingested += num_rows;
-        }
-        Ok(Self::new(data, meta.vector_byte_size))
-    }
-
     fn vec_path(directory: &Path, identity: &str) -> PathBuf {
         directory.join(format!("{identity}.vecs"))
     }
@@ -98,6 +59,55 @@ impl Vectors {
         let metadata_file = File::create(Self::meta_path(directory, identity))?;
         serde_json::to_writer(metadata_file, &self.metadata())?;
         Ok(())
+    }
+
+    pub fn from_arrow(
+        reader: ArrowArrayStreamReader,
+        number_of_records: usize,
+    ) -> Result<Self, SerializeError> {
+        // TODO we need to use our error type
+        let schema = reader.schema();
+        let col_type = schema.field(0).data_type();
+        let mut offset = 0;
+        if let DataType::FixedSizeList(_, single_vector_size) = col_type {
+            let single_vector_size: usize =
+                (*single_vector_size).try_into().unwrap();
+            let mut destination = unsafe {
+                SimdAlignedAllocation::<u8>::alloc(
+                    number_of_records
+                        * single_vector_size
+                        * std::mem::size_of::<f32>(),
+                )
+            };
+            for batch in reader {
+                let batch = batch.unwrap();
+                let count = batch.num_rows();
+                let float_count = count * single_vector_size;
+                let byte_count = float_count * std::mem::size_of::<f32>();
+                let col = batch.column(0);
+                let data = col.to_data();
+                let child_data = data.child_data();
+
+                let data_slice: &[u8] = unsafe {
+                    std::slice::from_raw_parts(
+                        child_data[0].buffers().last().unwrap().as_ptr(),
+                        byte_count,
+                    )
+                };
+                let destination_slice =
+                    &mut destination[offset..offset + byte_count];
+                destination_slice.copy_from_slice(data_slice);
+
+                offset += float_count;
+            }
+
+            return Ok(Vectors::new(
+                destination,
+                single_vector_size * std::mem::size_of::<f32>(),
+            ));
+        }
+
+        panic!("bad datatype");
     }
 
     pub fn load<P: AsRef<Path>>(
@@ -162,49 +172,15 @@ impl LayerMetadata {
     }
 }
 
-// Send + Sync super traits are necessary for pyo3 / maturin bindings
-#[async_trait]
-pub trait LayerLoader: Send + Sync {
-    fn number_of_neighborhoods(&self) -> usize;
-
-    async fn load(&self) -> SendableRecordBatchStream;
-}
-
 impl Layer {
-    pub async fn from_loader(
-        loader: &dyn LayerLoader,
-    ) -> Result<Self, DataFusionError> {
-        let number_of_neighborhoods = loader.number_of_neighborhoods();
-        let mut stream = loader.load().await;
-        let schema = stream.schema();
-        let (col_index, field) = schema.column_with_name("neighbors").unwrap();
-        if let DataType::FixedSizeList(inner_field, single_neighborhood_size) =
-            field.data_type()
-        {
-            let single_neighborhood_size = *single_neighborhood_size as usize;
-            let mut neighborhoods = unsafe {
-                SimdAlignedAllocation::<u32>::alloc(
-                    number_of_neighborhoods * single_neighborhood_size,
-                )
-            };
-            assert_eq!(&DataType::UInt32, inner_field.data_type());
-            let mut offset = 0;
-            while let Some(batch) = stream.try_next().await? {
-                let batch_size = batch.num_rows();
-                let start_offset = offset * single_neighborhood_size;
-                let end_offset =
-                    start_offset + batch_size * single_neighborhood_size;
-                let slice = &mut neighborhoods[start_offset..end_offset];
-                let col = batch.column(col_index).to_data();
-                let data: &[u32] = col.buffer(batch_size);
-                slice.copy_from_slice(data);
-                offset += batch_size;
-            }
 
-            Ok(Self::new(neighborhoods, single_neighborhood_size))
-        } else {
-            panic!("argh");
-        }
+    pub fn from_arrow(
+        reader: ArrowArrayStreamReader,
+        number_of_records: usize,
+    ) -> Result<Self, SerializeError> {
+
+        todo!() // TODO
+
     }
 
     pub fn arrow_schema(&self) -> Arc<Schema> {
@@ -347,32 +323,7 @@ impl HnswMetadata {
     }
 }
 
-// Send + Sync super traits are necessary for pyo3 / maturin bindings
-#[async_trait]
-pub trait HnswLoader: Send + Sync {
-    fn layer_count(&self) -> usize;
-
-    async fn get_layer_loader(
-        &self,
-        index: usize,
-    ) -> Result<Arc<dyn LayerLoader>, DataFusionError>;
-}
-
 impl Hnsw {
-    pub async fn from_loader(
-        loader: &dyn HnswLoader,
-    ) -> Result<Self, DataFusionError> {
-        let layer_count = loader.layer_count();
-        let mut layers = Vec::with_capacity(layer_count);
-        for i in 0..layer_count {
-            let layer_loader = loader.get_layer_loader(i).await?;
-            let layer = Layer::from_loader(&*layer_loader).await?;
-            layers.push(layer);
-        }
-
-        Ok(Self::new(layers))
-    }
-
     pub fn metadata(&self) -> HnswMetadata {
         HnswMetadata {
             layer_count: self.layer_count(),
@@ -567,4 +518,9 @@ impl IndexConfiguration {
             IndexConfiguration::Pq1024x8(_pq) => todo!(),
         }
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SerializeError {
+    // TODO add shit
 }

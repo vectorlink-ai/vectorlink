@@ -189,7 +189,7 @@ fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> __m256 {
 }
 
 #[inline]
-#[cfg(all(target_arch = "aarch64", target_feature  = "neon"))]
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 fn from_u16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
     use core::arch::aarch64::{
         uint16x4_t, uint16x8_t, uint32x4_t, float32x4_t,

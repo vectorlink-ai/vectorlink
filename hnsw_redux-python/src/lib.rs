@@ -14,6 +14,7 @@ use ::pyo3::{
     prelude::*,
     pyclass::PyClass,
     types::{IntoPyDict, PyCapsule, PyDict},
+    create_exception,
 };
 use async_trait::async_trait;
 use datafusion::{
@@ -47,9 +48,8 @@ fn hnsw_redux(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Hnsw1024>()?;
     m.add_class::<Hnsw1536>()?;
     m.add_class::<IndexConfiguration>()?;
-    m.add_class::<VectorsLoader>()?;
-    m.add_class::<LayerLoader>()?;
-    m.add_class::<HnswLoader>()?;
+    // m.add("SerializeError", m.py().get_type::<SerializeError>())?;  // For 0.23.x
+    m.add("SerializeError", m.py().get_type_bound::<SerializeError>())?;
     Ok(())
 }
 
@@ -84,69 +84,13 @@ impl Vectors {
         arrow_stream: Bound<'_, PyCapsule>,
         number_of_records: usize,
     ) -> PyResult<Self> {
-        arrow_stream.as_ptr();
         let arrow_stream = arrow_stream.pointer() as *mut FFI_ArrowArrayStream;
-        // TODO we need an error type
         let reader =
-            unsafe { ArrowArrayStreamReader::from_raw(arrow_stream) }.unwrap();
-        let schema = reader.schema();
-        let col_type = schema.field(0).data_type();
-        let mut offset = 0;
-        if let DataType::FixedSizeList(_, single_vector_size) = col_type {
-            let single_vector_size: usize =
-                (*single_vector_size).try_into().unwrap();
-            let mut destination = unsafe {
-                SimdAlignedAllocation::<u8>::alloc(
-                    number_of_records
-                        * single_vector_size
-                        * std::mem::size_of::<f32>(),
-                )
-            };
-            for batch in reader {
-                let batch = batch.unwrap();
-                let count = batch.num_rows();
-                let float_count = count * single_vector_size;
-                let byte_count = float_count * std::mem::size_of::<f32>();
-                let col = batch.column(0);
-                let data = col.to_data();
-                let child_data = data.child_data();
-
-                let data_slice: &[u8] = unsafe {
-                    std::slice::from_raw_parts(
-                        child_data[0].buffers().last().unwrap().as_ptr(),
-                        byte_count,
-                    )
-                };
-                let destination_slice =
-                    &mut destination[offset..offset + byte_count];
-                destination_slice.copy_from_slice(data_slice);
-
-                offset += float_count;
-            }
-
-            return Ok(Vectors::new(
-                SimdAlignedAllocationU8(destination),
-                single_vector_size * std::mem::size_of::<f32>(),
-            ));
-        }
-
-        panic!("bad datatype");
+            unsafe { ArrowArrayStreamReader::from_raw(arrow_stream).unwrap() };
+        vectors::Vectors::from_arrow(reader, number_of_records)
+            .map(Self)
+            .map_err(|err| SerializeError::new_err(format!("{err:?}")))
     }
-
-    /*
-    #[staticmethod]
-    pub async fn from_loader(loader: VectorsLoader) -> PyResult<Self> {
-        vectors::Vectors::from_loader(
-            &mut *loader.0.lock().expect("poisoned lock"),
-        )
-        .await
-        .map(Self)
-        .map_err(|datafusion_error| {
-            let msg = format!("DataFusion error: {datafusion_error}");
-            PyErr::new::<PyTypeError, _>(msg)
-        })
-    }
-    */
 
     pub fn num_vecs(&self) -> usize {
         self.0.num_vecs()
@@ -177,19 +121,6 @@ impl Vectors {
         }
     }
 
-    // #[staticmethod]
-    // pub async fn from_loader(l: &dyn VectorsLoader) -> PyResult<Self> {
-    //     // TODO: Provide a way to
-    //     //       1. obtain a `serialize::VectorsLoader` instance, or
-    //     //       2. load from a DataFusion DataFrame
-    //     vectors::Vectors::from_loader(l).await
-    //         .map(Self)
-    //         .map_err(|datafusion_error| {
-    //             let msg = format!("DataFusion error: {datafusion_error}");
-    //             PyErr::new::<PyTypeError, _>(msg)
-    //         })
-    // }
-
     pub fn store(&self, dirpath: &str, identity: &str) -> PyResult<()> {
         self.0.store(dirpath, identity)?;
         Ok(())
@@ -200,136 +131,6 @@ impl Vectors {
         Ok(Self(vectors::Vectors::load(dirpath, identity)?))
     }
 }
-
-#[pyclass(module = "hnsw_redux")]
-#[derive(Clone)]
-pub struct VectorsLoader(Arc<dyn serialize::VectorsLoader>);
-
-impl VectorsLoader {
-    async fn load(&self) -> SendableRecordBatchStream {
-        self.0.load().await
-    }
-}
-
-impl From<Arc<dyn serialize::VectorsLoader>> for VectorsLoader {
-    fn from(inner: Arc<dyn serialize::VectorsLoader>) -> Self {
-        Self(inner)
-    }
-}
-
-unsafe impl Send for VectorsLoader {}
-unsafe impl Sync for VectorsLoader {}
-
-pub struct ArrowVectorsLoader {
-    stream: Pin<Box<dyn RecordBatchStream + Send + Sync>>,
-    vector_byte_size: usize,
-    number_of_vectors: usize,
-}
-
-/*
-#[async_trait]
-impl serialize::VectorsLoader for ArrowVectorsLoader {
-    fn vector_byte_size(&self) -> usize {
-        self.vector_byte_size
-    }
-
-    fn number_of_vectors(&self) -> usize {
-        self.number_of_vectors
-    }
-
-    async fn load(&mut self) -> SendableRecordBatchStream {
-        loop {
-            let next = self.stream.next().await;
-            /*
-            match next {
-                Some(Ok(next)) => todo!(),
-                Some(Err(e)) => todo!(),
-                None => todo!(),
-            }
-            */
-        }
-        todo!();
-    }
-}
-
-#[pymethods]
-impl VectorsLoader {
-    #[classmethod]
-    fn from_arrow_c_stream(
-        cls: &Bound<'_, PyType>,
-        capsule: Bound<'_, PyCapsule>,
-        vector_byte_size: usize,
-        number_of_vectors: usize,
-    ) -> Self {
-        let stream = unsafe { capsule.pointer() as *mut FFI_ArrowArrayStream };
-        eprintln!("constructed stream");
-        let reader =
-            unsafe { ArrowArrayStreamReader::from_raw(stream).unwrap() };
-        let schema = reader.schema();
-
-        let stream = tokio_stream::iter(reader);
-        let wrapped_stream = RecordBatchStreamAdapter::new(
-            schema,
-            stream.map(|r| r.map_err(Into::into)),
-        );
-
-        let loader = ArrowVectorsLoader {
-            stream: Box::pin(wrapped_stream),
-            vector_byte_size,
-            number_of_vectors,
-        };
-
-        Self(Arc::new(loader))
-    }
-}
-*/
-
-#[pyclass(module = "hnsw_redux")]
-#[derive(Clone)]
-pub struct LayerLoader(Arc<dyn serialize::LayerLoader>);
-
-impl LayerLoader {
-    async fn load(&self) -> SendableRecordBatchStream {
-        self.0.load().await
-    }
-}
-
-impl From<Arc<dyn serialize::LayerLoader>> for LayerLoader {
-    fn from(inner: Arc<dyn serialize::LayerLoader>) -> Self {
-        Self(inner)
-    }
-}
-
-unsafe impl Send for LayerLoader {}
-unsafe impl Sync for LayerLoader {}
-
-#[pyclass(module = "hnsw_redux")]
-#[derive(Clone)]
-pub struct HnswLoader(Arc<dyn serialize::HnswLoader>);
-
-#[pymethods]
-impl HnswLoader {
-    fn layer_count(&self) -> usize {
-        self.0.layer_count()
-    }
-
-    async fn get_layer_loader(
-        &self,
-        index: usize,
-    ) -> Result<LayerLoader, DataFusionError> {
-        let loader = self.0.get_layer_loader(index).await?;
-        Ok(LayerLoader(loader))
-    }
-}
-
-impl From<Arc<dyn serialize::HnswLoader>> for HnswLoader {
-    fn from(inner: Arc<dyn serialize::HnswLoader>) -> Self {
-        Self(inner)
-    }
-}
-
-unsafe impl Send for HnswLoader {}
-unsafe impl Sync for HnswLoader {}
 
 // PyO3 / Maturin require that no generics are used at FFI boundaries.
 // This means that for types like `hnsw_redux::util::SimdAlignedAllocation<E>`,
@@ -386,21 +187,23 @@ wrap_SimdAlignedAllocation_type_for_element![u8];
 pub struct LayerMetadata(serialize::LayerMetadata);
 
 #[pyclass(module = "hnsw_redux")]
+#[derive(Clone)]
 pub struct Layer(::hnsw_redux::layer::Layer);
 
 #[pymethods]
 impl Layer {
+
     #[staticmethod]
-    pub async fn from_loader(
-        loader: LayerLoader,
-    ) -> PyResult<Self /*, DataFusionError*/> {
-        layer::Layer::from_loader(&*loader.0)
-            .await
+    pub fn from_arrow(
+        arrow_stream: Bound<'_, PyCapsule>,
+        number_of_records: usize,
+    ) -> PyResult<Self> {
+        let arrow_stream = arrow_stream.pointer() as *mut FFI_ArrowArrayStream;
+        let reader =
+            unsafe { ArrowArrayStreamReader::from_raw(arrow_stream).unwrap() };
+        layer::Layer::from_arrow(reader, number_of_records)
             .map(Self)
-            .map_err(|datafusion_error| {
-                let msg = format!("DataFusion error: {datafusion_error}");
-                PyErr::new::<PyTypeError, _>(msg)
-            })
+            .map_err(|err| SerializeError::new_err(format!("{err:?}")))
     }
 
     // TODO: defer, not sure we need it
@@ -440,14 +243,31 @@ pub struct Hnsw(hnsw::Hnsw);
 
 #[pymethods]
 impl Hnsw {
+    #[new]
+    pub fn new(layers: Vec<Layer>) -> Self {
+        // TODO To make this work, `Layer: Clone` is needed - which likely means
+        //      that the FFI boundary actuyally clones the damn layers.
+        //      Fix that.
+        let layers: Vec<_> = layers.into_iter()
+            .map(|layer| layer.0)
+            .collect();
+        Self(hnsw::Hnsw::new(layers))
+    }
+
     #[staticmethod]
-    pub async fn from_loader(loader: HnswLoader) -> PyResult<Self> {
-        hnsw::Hnsw::from_loader(&*loader.0).await.map(Self).map_err(
-            |datafusion_error| {
-                let msg = format!("DataFusion error: {datafusion_error}");
-                PyErr::new::<PyTypeError, _>(msg)
-            },
-        )
+    pub fn from_arrow(
+        arrow_stream: Bound<'_, PyCapsule>,
+        number_of_records: usize,
+    ) -> PyResult<Self> {
+        let arrow_stream = arrow_stream.pointer() as *mut FFI_ArrowArrayStream;
+        let reader =
+            unsafe { ArrowArrayStreamReader::from_raw(arrow_stream).unwrap() };
+
+
+        // layer::Layer::from_arrow(reader, number_of_records)
+        //     .map(Self)
+        //     .map_err(|err| SerializeError::new_err(format!("{err:?}")))
+
     }
 
     pub fn metadata(&self) -> HnswMetadata {
@@ -502,3 +322,6 @@ wrap_index_type![Hnsw1024, Hnsw1536, IndexConfiguration];
 // - access beams
 // - access distances
 // - search([vector]) -> [queue]
+
+
+create_exception!(hnsw_redux, SerializeError, PyException, "Failed to serialize");

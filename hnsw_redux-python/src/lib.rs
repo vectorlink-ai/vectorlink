@@ -84,7 +84,8 @@ impl Vectors {
         arrow_stream: Bound<'_, PyCapsule>,
         number_of_records: usize,
     ) -> PyResult<Self> {
-        let arrow_stream = arrow_stream.as_ptr() as *mut FFI_ArrowArrayStream;
+        arrow_stream.as_ptr();
+        let arrow_stream = arrow_stream.pointer() as *mut FFI_ArrowArrayStream;
         // TODO we need an error type
         let reader =
             unsafe { ArrowArrayStreamReader::from_raw(arrow_stream) }.unwrap();
@@ -105,18 +106,19 @@ impl Vectors {
                 let batch = batch.unwrap();
                 let count = batch.num_rows();
                 let float_count = count * single_vector_size;
+                let byte_count = float_count * std::mem::size_of::<f32>();
                 let col = batch.column(0);
-                // TODO this might incur a copy. that's stupid.
                 let data = col.to_data();
+                let child_data = data.child_data();
 
                 let data_slice: &[u8] = unsafe {
                     std::slice::from_raw_parts(
-                        data.buffers().last().unwrap().as_ptr(),
-                        float_count * std::mem::size_of::<f32>(),
+                        child_data[0].buffers().last().unwrap().as_ptr(),
+                        byte_count,
                     )
                 };
                 let destination_slice =
-                    &mut destination[offset..offset + float_count];
+                    &mut destination[offset..offset + byte_count];
                 destination_slice.copy_from_slice(data_slice);
 
                 offset += float_count;

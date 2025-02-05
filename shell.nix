@@ -14,6 +14,7 @@ let
       rm -rf $VENV  # Remove any existing virtualenv
       virtualenv $VENV  # Setup a fresh virtualenv
       source ./$VENV/bin/activate
+      pip install datafusion # install datafusion cause it's useful during development
       export PYTHONPATH=`pwd`/$VENV/${pkgs.python3.sitePackages}/:$PYTHONPATH
     fi
   '';
@@ -30,26 +31,6 @@ mkShell {
       # they will be reinstalled when running `pip -r requirements.txt` because
       # virtualenv is used below in the shellHook. Fkn virtualenv :/
       ipython
-      /*
-      (datafusion.overridePythonAttrs rec {
-        version = "43.1.0";
-        doCheck = false;
-        src = fetchFromGitHub {
-          name = "datafusion-source";
-          owner = "apache";
-          repo = "datafusion-python";
-          tag = version;
-          hash = "sha256-a/6x+9xAHgZmTnmrqnI9264fbgWykUkutMjcZHZdMPE=";
-        };
-
-        cargoDeps = rustPlatform.fetchCargoVendor {
-          name = "datafusion-cargo-deps";
-          inherit src;
-          hash = "sha256-KkU8cN74Vfh3kp1O9cvBqevxnLXnKNA+J4sttNgf5S0=";
-        };
-
-      })
-*/
       pip
       setuptools
       virtualenvwrapper

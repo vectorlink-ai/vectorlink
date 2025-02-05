@@ -25,7 +25,11 @@ mkShell {
     })
   ];
   # add manylinux1 to ld library path to allow pip packages to find what they need without rpath patching.
-  LD_LIBRARY_PATH=pkgs.lib.makeLibraryPath pkgs.pythonManylinuxPackages.manylinux1;
+
+  LD_LIBRARY_PATH = if pkgs.stdenv.isDarwin then
+    ""
+  else
+    pkgs.lib.makeLibraryPath pkgs.pythonManylinuxPackages.manylinux1;
 
   shellHook = (if pkgs.system == "x86_64-linux" then ''
     export RUSTFLAGS="-C target-feature=+avx2,+f16c,+fma,+aes,+sse2"

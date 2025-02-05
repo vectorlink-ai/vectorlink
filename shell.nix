@@ -30,7 +30,26 @@ mkShell {
       # they will be reinstalled when running `pip -r requirements.txt` because
       # virtualenv is used below in the shellHook. Fkn virtualenv :/
       ipython
-      datafusion
+      /*
+      (datafusion.overridePythonAttrs rec {
+        version = "43.1.0";
+        doCheck = false;
+        src = fetchFromGitHub {
+          name = "datafusion-source";
+          owner = "apache";
+          repo = "datafusion-python";
+          tag = version;
+          hash = "sha256-a/6x+9xAHgZmTnmrqnI9264fbgWykUkutMjcZHZdMPE=";
+        };
+
+        cargoDeps = rustPlatform.fetchCargoVendor {
+          name = "datafusion-cargo-deps";
+          inherit src;
+          hash = "sha256-KkU8cN74Vfh3kp1O9cvBqevxnLXnKNA+J4sttNgf5S0=";
+        };
+
+      })
+*/
       pip
       setuptools
       virtualenvwrapper
@@ -45,12 +64,15 @@ mkShell {
       ];
     })
   ];
+  # add manylinux1 to ld library path to allow pip packages to find what they need without rpath patching.
+  LD_LIBRARY_PATH=pkgs.lib.makeLibraryPath pkgs.pythonManylinuxPackages.manylinux1;
 
-  shellHook = if pkgs.system == "x86_64-linux" then ''
+  shellHook = (if pkgs.system == "x86_64-linux" then ''
     export RUSTFLAGS="-C target-feature=+avx2,+f16c,+fma,+aes,+sse2"
-  '' + pythonVenvShellHook else if pkgs.system == "aarch64-linux" then ''
+  '' else if pkgs.system == "aarch64-linux" then ''
     export RUSTFLAGS="-C target-feature=+neon"
-  '' + pythonVenvShellHook else if pkgs.system == "aarch64-darwin" then ''
+  '' else if pkgs.system == "aarch64-darwin" then ''
     export RUSTFLAGS="-C target-feature=+neon"
-  '' + pythonVenvShellHook else throw "Unknown system: ${pkgs.system}";
+  '' else throw "Unknown system: ${pkgs.system}"
+  ) + pythonVenvShellHook;
 }

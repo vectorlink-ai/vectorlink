@@ -15,6 +15,7 @@ use datafusion::{
         buffer::{Buffer, ScalarBuffer},
         datatypes::{DataType, Field, Schema},
         error::ArrowError,
+        ffi_stream::ArrowArrayStreamReader,
     },
 };
 use rayon::prelude::*;
@@ -65,7 +66,6 @@ impl Vectors {
         reader: ArrowArrayStreamReader,
         number_of_records: usize,
     ) -> Result<Self, SerializeError> {
-        // TODO we need to use our error type
         let schema = reader.schema();
         let col_type = schema.field(0).data_type();
         let mut offset = 0;
@@ -80,7 +80,7 @@ impl Vectors {
                 )
             };
             for batch in reader {
-                let batch = batch.unwrap();
+                let batch = batch?;
                 let count = batch.num_rows();
                 let float_count = count * single_vector_size;
                 let byte_count = float_count * std::mem::size_of::<f32>();
@@ -105,9 +105,9 @@ impl Vectors {
                 destination,
                 single_vector_size * std::mem::size_of::<f32>(),
             ));
+        } else {
+            Err(SerializeError::ExpectedFixedSizeList)
         }
-
-        panic!("bad datatype");
     }
 
     pub fn load<P: AsRef<Path>>(
@@ -178,9 +178,41 @@ impl Layer {
         reader: ArrowArrayStreamReader,
         number_of_records: usize,
     ) -> Result<Self, SerializeError> {
+        let schema = reader.schema();
+        let col_type = schema.field(0).data_type();
+        let mut offset = 0;
+        if let DataType::FixedSizeList(_, single_neighborhood_size) = col_type {
+            let single_neighborhood_size: usize =
+                (*single_neighborhood_size).try_into().unwrap();
+            let mut neighborhoods = unsafe {
+                SimdAlignedAllocation::<u32>::alloc(number_of_records * single_neighborhood_size)
+            };
 
-        todo!() // TODO
+            for batch in reader {
+                let batch = batch?;
+                let count = batch.num_rows();
+                let u32_count = count * single_neighborhood_size;
+                let col = batch.column(0);
+                let data = col.to_data();
+                let child_data = data.child_data();
 
+                let data_slice: &[u32] = unsafe {
+                    let last_buffer = child_data[0].buffers().last()
+                        .unwrap()
+                        .as_ptr() as *const u32;
+                    std::slice::from_raw_parts(last_buffer, u32_count)
+                };
+                let destination_slice =
+                    &mut neighborhoods[offset..offset + u32_count];
+                destination_slice.copy_from_slice(data_slice);
+
+                offset += u32_count;
+            }
+
+            Ok(Layer::new(neighborhoods, single_neighborhood_size))
+        } else {
+            Err(SerializeError::ExpectedFixedSizeList)
+        }
     }
 
     pub fn arrow_schema(&self) -> Arc<Schema> {
@@ -340,12 +372,10 @@ impl Hnsw {
         for (i, layer) in self.layers().iter().enumerate() {
             layer.store(directory, i)?;
         }
-
         serde_json::to_writer(
             File::create(Self::meta_path(directory))?,
             &self.metadata(),
         )?;
-
         Ok(())
     }
 
@@ -522,5 +552,9 @@ impl IndexConfiguration {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SerializeError {
-    // TODO add shit
+    #[error("Arrow error: {0}")]
+    ArrowError(#[from] ArrowError),
+
+    #[error(" Expected a FixedSizeList in Arrow stream")]
+    ExpectedFixedSizeList,
 }

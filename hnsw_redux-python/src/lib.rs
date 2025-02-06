@@ -5,7 +5,8 @@ use ::datafusion::{
     execution::SendableRecordBatchStream,
 };
 use ::hnsw_redux::{
-    hnsw, index, layer, serialize,
+    comparator::CosineDistance1536,
+    hnsw, index, layer, params, serialize,
     util::{self, SimdAlignedAllocation},
     vectors,
 };
@@ -255,6 +256,25 @@ impl Hnsw {
     }
 
     #[staticmethod]
+    pub fn generate_with_cosine_distance_1536(
+        bp: BuildParams,
+        vecs: &Vectors,
+    ) -> PyResult<Self> {
+        const F32_SIZE: usize = std::mem::size_of::<f32>();
+        let vector_byte_size = vecs.0.vector_byte_size();
+        if vector_byte_size != 1536 * F32_SIZE {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                format!(
+                    "Vector dimensionality expected to be 1536, but found {}",
+                    vector_byte_size / F32_SIZE
+                )
+            ));
+        }
+        let default_comparator = CosineDistance1536::new(&vecs.0);
+        Ok(Self(hnsw::Hnsw::generate(&bp.into_raw(), &default_comparator)))
+    }
+
+    #[staticmethod]
     pub fn from_arrow(
         arrow_stream: Bound<'_, PyCapsule>,
         number_of_records: usize,
@@ -262,12 +282,10 @@ impl Hnsw {
         let arrow_stream = arrow_stream.pointer() as *mut FFI_ArrowArrayStream;
         let reader =
             unsafe { ArrowArrayStreamReader::from_raw(arrow_stream).unwrap() };
-
-
-        // layer::Layer::from_arrow(reader, number_of_records)
-        //     .map(Self)
-        //     .map_err(|err| SerializeError::new_err(format!("{err:?}")))
-
+        let layer = layer::Layer::from_arrow(reader, number_of_records)
+            .map(Layer)
+            .map_err(|err| SerializeError::new_err(format!("{err:?}")))?;
+        Ok(Self::new(vec![layer]))
     }
 
     pub fn metadata(&self) -> HnswMetadata {
@@ -325,3 +343,100 @@ wrap_index_type![Hnsw1024, Hnsw1536, IndexConfiguration];
 
 
 create_exception!(hnsw_redux, SerializeError, PyException, "Failed to serialize");
+
+
+
+
+#[derive(Clone, Copy, Debug)]
+#[pyclass(module = "hnsw_redux")]
+pub struct BuildParams {
+    pub order: usize,
+    pub neighborhood_size: usize,
+    pub bottom_neighborhood_size: usize,
+    pub optimization_params: OptimizationParams,
+}
+
+impl BuildParams {
+    fn into_raw(self) -> params::BuildParams {
+        params::BuildParams {
+            order: self.order,
+            neighborhood_size: self.neighborhood_size,
+            bottom_neighborhood_size: self.bottom_neighborhood_size,
+            optimization_params: self.optimization_params.into_raw(),
+        }
+    }
+}
+
+impl From<params::BuildParams> for BuildParams {
+    fn from(p: params::BuildParams) -> Self {
+        Self {
+            order: p.order,
+            neighborhood_size: p.neighborhood_size,
+            bottom_neighborhood_size: p.bottom_neighborhood_size,
+            optimization_params: p.optimization_params.into(),
+        }
+    }
+}
+
+
+
+#[derive(Clone, Copy, Debug)]
+#[pyclass(module = "hnsw_redux")]
+pub struct OptimizationParams {
+    pub search_params: SearchParams,
+    pub improvement_threshold: f32,
+    pub recall_target: f32,
+}
+
+impl OptimizationParams {
+    fn into_raw(self) -> params::OptimizationParams {
+        params::OptimizationParams {
+            search_params: self.search_params.into_raw(),
+            improvement_threshold: self.improvement_threshold,
+            recall_target: self.recall_target,
+        }
+    }
+}
+
+impl From<params::OptimizationParams> for OptimizationParams {
+    fn from(p: params::OptimizationParams) -> Self {
+        Self {
+            search_params: p.search_params.into(),
+            improvement_threshold: p.improvement_threshold,
+            recall_target: p.recall_target,
+        }
+    }
+}
+
+
+
+#[derive(Clone, Copy, Debug)]
+#[pyclass(module = "hnsw_redux")]
+pub struct SearchParams {
+    pub parallel_visit_count: usize,
+    pub visit_queue_len: usize,
+    pub search_queue_len: usize,
+    pub circulant_parameter_count: usize,
+}
+
+impl SearchParams {
+    fn into_raw(self) -> params::SearchParams {
+        params::SearchParams {
+            parallel_visit_count: self.parallel_visit_count,
+            visit_queue_len: self.visit_queue_len,
+            search_queue_len: self.search_queue_len,
+            circulant_parameter_count: self.circulant_parameter_count,
+        }
+    }
+}
+
+impl From<params::SearchParams> for SearchParams {
+    fn from(p: params::SearchParams) -> Self {
+        Self {
+            parallel_visit_count: p.parallel_visit_count,
+            visit_queue_len: p.visit_queue_len,
+            search_queue_len: p.search_queue_len,
+            circulant_parameter_count: p.circulant_parameter_count,
+        }
+    }
+}

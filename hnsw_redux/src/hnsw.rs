@@ -16,6 +16,7 @@ impl Hnsw {
     pub fn new(layers: Vec<Layer>) -> Self {
         Self { layers }
     }
+
     pub fn layers(&self) -> &[Layer] {
         &self.layers
     }

@@ -399,6 +399,14 @@ pub struct OptimizationParams {
     pub recall_target: f32,
 }
 
+#[pymethods]
+impl OptimizationParams {
+    #[staticmethod]
+    pub fn default() -> Self {
+        Self::from(params::OptimizationParams::default())
+    }
+}
+
 impl OptimizationParams {
     fn into_raw(self) -> params::OptimizationParams {
         params::OptimizationParams {
@@ -428,6 +436,14 @@ pub struct SearchParams {
     pub visit_queue_len: usize,
     pub search_queue_len: usize,
     pub circulant_parameter_count: usize,
+}
+
+#[pymethods]
+impl SearchParams {
+    #[staticmethod]
+    pub fn default() -> Self {
+        Self::from(params::SearchParams::default())
+    }
 }
 
 impl SearchParams {

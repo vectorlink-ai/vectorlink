@@ -370,6 +370,14 @@ impl BuildParams {
     }
 }
 
+#[pymethods]
+impl BuildParams {
+    #[staticmethod]
+    pub fn default() -> Self {
+        Self::from(params::BuildParams::default())
+    }
+}
+
 impl From<params::BuildParams> for BuildParams {
     fn from(p: params::BuildParams) -> Self {
         Self {

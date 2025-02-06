@@ -49,6 +49,9 @@ fn hnsw_redux(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Hnsw1024>()?;
     m.add_class::<Hnsw1536>()?;
     m.add_class::<IndexConfiguration>()?;
+    m.add_class::<BuildParams>()?;
+    m.add_class::<OptimizationParams>()?;
+    m.add_class::<SearchParams>()?;
     // m.add("SerializeError", m.py().get_type::<SerializeError>())?;  // For 0.23.x
     m.add("SerializeError", m.py().get_type_bound::<SerializeError>())?;
     Ok(())

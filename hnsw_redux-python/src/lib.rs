@@ -1,43 +1,24 @@
-#![allow(unused)] // TODO: remove
+#![allow(unexpected_cfgs)]
 
-use ::datafusion::{
-    arrow::datatypes::Schema, error::DataFusionError,
-    execution::SendableRecordBatchStream,
-};
 use ::hnsw_redux::{
     comparator::CosineDistance1536,
     hnsw, index, layer, params, serialize,
-    util::{self, SimdAlignedAllocation},
+    util,
     vectors,
 };
-use ::pyo3::{
+use pyo3::{
     create_exception,
-    exceptions::{PyException, PyIndexError, PyTypeError},
+    exceptions::{PyException, PyIndexError, PyRuntimeError},
     prelude::*,
-    pyclass::PyClass,
-    types::{IntoPyDict, PyCapsule, PyDict},
+    types::PyCapsule,
 };
-use async_trait::async_trait;
 use datafusion::{
     arrow::{
-        alloc,
-        array::{Array, ArrayData, RecordBatch, RecordBatchReader},
-        datatypes::DataType,
+        array::{Array, ArrayData},
         ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
-        pyarrow::{PyArrowException, PyArrowType},
+        pyarrow::PyArrowType,
     },
-    execution::RecordBatchStream,
-    physical_plan::stream::RecordBatchStreamAdapter,
 };
-use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
-    types::PyType,
-};
-use std::{
-    pin::Pin,
-    sync::{Arc, Mutex},
-};
-use tokio_stream::StreamExt;
 
 // This function defines a Python module. Its name MUST match the the `lib.name`
 // settings in `Cargo.toml`, else Python will not be able to import the module.
@@ -191,6 +172,7 @@ macro_rules! wrap_SimdAlignedAllocation_type_for_element {
 // are needed for `self::Vectors::new()`
 wrap_SimdAlignedAllocation_type_for_element![u8];
 
+#[allow(unused)]
 #[pyclass(module = "hnsw_redux")]
 pub struct LayerMetadata(serialize::LayerMetadata);
 
@@ -344,6 +326,7 @@ impl Hnsw {
     }
 }
 
+#[allow(unused)]
 #[pyclass(module = "hnsw_redux")]
 pub struct HnswType(serialize::HnswType);
 

@@ -5,9 +5,7 @@ edition = "2021"
 description = "Python bindings for hnsw_redux"
 
 [dependencies]
-async-trait = "0.1.86"
 datafusion = { workspace = true }
-# datafusion-python = { workspace = true }
 hnsw_redux = { version = "0.1.0", path = "../hnsw_redux" }
 paste = "1.0.15"
 tokio-stream = "0.1.17"

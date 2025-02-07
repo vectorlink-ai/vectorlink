@@ -1,7 +1,7 @@
 use std::{io, time::SystemTime};
 
 use clap::Parser;
-use hnsw_redux::vectors::Vectors;
+use vectorlink_hnsw::vectors::Vectors;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

@@ -1,10 +1,9 @@
 #![allow(unexpected_cfgs)]
 
-use ::hnsw_redux::{
-    comparator::CosineDistance1536,
-    hnsw, index, layer, params, serialize,
-    util,
-    vectors,
+use datafusion::arrow::{
+    array::{Array, ArrayData},
+    ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
+    pyarrow::PyArrowType,
 };
 use pyo3::{
     create_exception,
@@ -12,18 +11,17 @@ use pyo3::{
     prelude::*,
     types::PyCapsule,
 };
-use datafusion::{
-    arrow::{
-        array::{Array, ArrayData},
-        ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
-        pyarrow::PyArrowType,
-    },
+use ::vectorlink_hnsw::{
+    comparator::CosineDistance1536,
+    hnsw, index, layer, params, serialize,
+    util,
+    vectors,
 };
 
 // This function defines a Python module. Its name MUST match the the `lib.name`
 // settings in `Cargo.toml`, else Python will not be able to import the module.
 #[pymodule]
-fn hnsw_redux(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn vectorlink_hnsw(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Vectors>()?;
     m.add_class::<SimdAlignedAllocationU8>()?;
     m.add_class::<LayerMetadata>()?;
@@ -42,7 +40,7 @@ fn hnsw_redux(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct Vectors(vectors::Vectors);
 
 #[pymethods]
@@ -122,18 +120,18 @@ impl Vectors {
 }
 
 // PyO3 / Maturin require that no generics are used at FFI boundaries.
-// This means that for types like `hnsw_redux::util::SimdAlignedAllocation<E>`,
+// This means that for types like `vectorlink_hnsw::util::SimdAlignedAllocation<E>`,
 // the SIMD element type parameter `E` needs to be filled out rather than be
 // left up to the user.  This macro does that by providing that `$element` while
 // also wrapping the generic type into a new `SimdAlignedAllocation*` type for
 // each `$element`.
 // For example, for `$element = u8`, it generates the `SimdAlignedAllocationU8`
-// type, which wraps `hnsw_redux::util::SimdAlignedAllocation<u8>`.
+// type, which wraps `vectorlink_hnsw::util::SimdAlignedAllocation<u8>`.
 macro_rules! wrap_SimdAlignedAllocation_type_for_element {
     ($($element:ty),*) => {
         paste::paste! {
             $(
-                #[pyclass(module = "hnsw_redux")]
+                #[pyclass(module = "vectorlink_hnsw")]
                 #[derive(Clone)]
                 pub struct [<SimdAlignedAllocation $element:upper>](
                     util::SimdAlignedAllocation<$element>
@@ -173,12 +171,12 @@ macro_rules! wrap_SimdAlignedAllocation_type_for_element {
 wrap_SimdAlignedAllocation_type_for_element![u8];
 
 #[allow(unused)]
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct LayerMetadata(serialize::LayerMetadata);
 
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 #[derive(Clone)]
-pub struct Layer(::hnsw_redux::layer::Layer);
+pub struct Layer(::vectorlink_hnsw::layer::Layer);
 
 #[pymethods]
 impl Layer {
@@ -217,14 +215,14 @@ impl Layer {
 
     #[staticmethod]
     pub fn load(dirpath: &str, layer_index: usize) -> PyResult<Layer> {
-        Ok(Self(::hnsw_redux::layer::Layer::load(
+        Ok(Self(::vectorlink_hnsw::layer::Layer::load(
             dirpath,
             layer_index,
         )?))
     }
 }
 
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct HnswMetadata(serialize::HnswMetadata);
 
 #[pymethods]
@@ -234,7 +232,7 @@ impl HnswMetadata {
     }
 }
 
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct Hnsw(hnsw::Hnsw);
 
 fn ensure_1536_vector_size(vecs: &Vectors) -> PyResult<()> {
@@ -327,13 +325,13 @@ impl Hnsw {
 }
 
 #[allow(unused)]
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct HnswType(serialize::HnswType);
 
 macro_rules! wrap_index_type {
     ($($type:ident),* $(,)?) => {
         $(
-            #[pyclass(module = "hnsw_redux")]
+            #[pyclass(module = "vectorlink_hnsw")]
             pub struct $type(index::$type);
 
             #[pymethods]
@@ -367,14 +365,14 @@ wrap_index_type![Hnsw1024, Hnsw1536, IndexConfiguration];
 // - search([vector]) -> [queue]
 
 create_exception!(
-    hnsw_redux,
+    vectorlink_hnsw,
     SerializeError,
     PyException,
     "Failed to serialize"
 );
 
 #[derive(Clone, Copy, Debug)]
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct BuildParams {
     pub order: usize,
     pub neighborhood_size: usize,
@@ -413,7 +411,7 @@ impl From<params::BuildParams> for BuildParams {
 }
 
 #[derive(Clone, Copy, Debug)]
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct OptimizationParams {
     pub search_params: SearchParams,
     pub improvement_threshold: f32,
@@ -449,7 +447,7 @@ impl From<params::OptimizationParams> for OptimizationParams {
 }
 
 #[derive(Clone, Copy, Debug)]
-#[pyclass(module = "hnsw_redux")]
+#[pyclass(module = "vectorlink_hnsw")]
 pub struct SearchParams {
     pub parallel_visit_count: usize,
     pub visit_queue_len: usize,

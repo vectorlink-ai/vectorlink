@@ -9,7 +9,7 @@ use argmin_observer_slog::SlogLogger;
 use anyhow::Context;
 
 use clap::Parser;
-use hnsw_redux::{
+use vectorlink_hnsw::{
     index::{Index, IndexConfiguration},
     params::SearchParams,
     vectors::{Vector, Vectors},

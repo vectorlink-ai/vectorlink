@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use clap::Parser;
 use csv::Writer;
-use hnsw_redux::{
+use vectorlink_hnsw::{
     comparator::CosineDistance1536, index::IndexConfiguration, layer::VectorComparator,
     vectors::Vectors,
 };

@@ -2,17 +2,17 @@
 resolver = "2"
 members = [
     "generate-random-vectors",
-    "hnsw_redux",
+    "generate-vectors",
+    "vectorlink-hnsw",
+    "vectorlink-hnsw-python",
     "improve",
+    "index-graph-field",
     "index-vectors",
     "knn",
     "normalize",
     "search-collation",
     "test-recall",
     "time-load",
-    "generate-vectors",
-    "index-graph-field",
-    "hnsw_redux-python"
 ]
 
 [profile.release]

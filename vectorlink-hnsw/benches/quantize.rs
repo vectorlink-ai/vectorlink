@@ -1,7 +1,7 @@
 #![feature(test)]
 
 extern crate test;
-use hnsw_redux::{
+use vectorlink_hnsw::{
     comparator::{NewEuclideanDistance8x8, VectorComparatorConstructor},
     hnsw::Hnsw,
     params::{BuildParams, SearchParams},

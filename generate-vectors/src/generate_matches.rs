@@ -4,7 +4,7 @@ use std::{fs::File, path::Path};
 use clap::Parser;
 
 use csv::Writer;
-use hnsw_redux::{
+use vectorlink_hnsw::{
     index::{Index, IndexConfiguration},
     params::{FindPeaksParams, SearchParams},
     vectors::{Vector, Vectors},

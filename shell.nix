@@ -1,7 +1,7 @@
 {pkgs, mkShell}:
 let
   pythonVenvShellHook = ''
-    cd hnsw_redux-python
+    cd vectorlink-hnsw-python
     uv sync --no-install-project
     source .venv/bin/activate
     cd ..
@@ -13,7 +13,7 @@ mkShell {
     pkg-config
     maturin
     openssl
-    python3 # For pyo3/maturin, which is used by hnsw_redux-python
+    python3 # For pyo3/maturin, which is used by vectorlink-hnsw-python
     uv
     (rust-bin.nightly."2025-01-23".default.override {
       extensions = [ "rustfmt" "rust-src" "rust-analyzer" ];

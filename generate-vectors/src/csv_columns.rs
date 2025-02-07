@@ -5,7 +5,7 @@ use std::{collections::HashMap, fs::File, path::Path};
 use anyhow::Context;
 use clap::Parser;
 use csv::StringRecord;
-use hnsw_redux::serialize::VectorsMetadata;
+use vectorlink_hnsw::serialize::VectorsMetadata;
 
 use crate::{
     graph::{FullGraph, Graph},

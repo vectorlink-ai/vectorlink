@@ -1,7 +1,7 @@
 use std::{io, path::Path, time::SystemTime};
 
 use clap::Parser;
-use hnsw_redux::{
+use vectorlink_hnsw::{
     index::{Hnsw1024, Hnsw1536, Index, IndexConfiguration},
     params::{BuildParams, OptimizationParams},
     vectors::Vectors,

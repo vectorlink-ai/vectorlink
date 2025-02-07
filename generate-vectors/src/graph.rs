@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::Path};
 
 use crate::templates::ID_FIELD_NAME;
 use either::Either;
-use hnsw_redux::vectors::Vectors;
+use vectorlink_hnsw::vectors::Vectors;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]

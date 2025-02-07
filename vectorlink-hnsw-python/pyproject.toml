@@ -5,6 +5,7 @@ build-backend = "maturin"
 [tool.maturin]
 # "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
 features = ["pyo3/extension-module"]
+python-source = "python"
 
 [project]
 name = "vectorlink-hnsw"

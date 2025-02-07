@@ -11,24 +11,28 @@ use ::hnsw_redux::{
     vectors,
 };
 use ::pyo3::{
+    create_exception,
     exceptions::{PyException, PyIndexError, PyTypeError},
     prelude::*,
     pyclass::PyClass,
     types::{IntoPyDict, PyCapsule, PyDict},
-    create_exception,
 };
 use async_trait::async_trait;
 use datafusion::{
     arrow::{
         alloc,
-        array::{RecordBatch, RecordBatchReader},
+        array::{Array, ArrayData, RecordBatch, RecordBatchReader},
         datatypes::DataType,
         ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
+        pyarrow::{PyArrowException, PyArrowType},
     },
     execution::RecordBatchStream,
     physical_plan::stream::RecordBatchStreamAdapter,
 };
-use pyo3::types::PyType;
+use pyo3::{
+    exceptions::{PyRuntimeError, PyValueError},
+    types::PyType,
+};
 use std::{
     pin::Pin,
     sync::{Arc, Mutex},
@@ -196,7 +200,6 @@ pub struct Layer(::hnsw_redux::layer::Layer);
 
 #[pymethods]
 impl Layer {
-
     #[staticmethod]
     pub fn from_arrow(
         arrow_stream: Bound<'_, PyCapsule>,
@@ -208,6 +211,13 @@ impl Layer {
         layer::Layer::from_arrow(reader, number_of_records)
             .map(Self)
             .map_err(|err| SerializeError::new_err(format!("{err:?}")))
+    }
+
+    pub fn to_arrow_array(&self) -> PyResult<PyArrowType<ArrayData>> {
+        let array = self.0.to_arrow_array();
+        array
+            .map(|a| PyArrowType(a.into_data()))
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 
     // TODO: defer, not sure we need it
@@ -252,9 +262,7 @@ impl Hnsw {
         // TODO To make this work, `Layer: Clone` is needed - which likely means
         //      that the FFI boundary actuyally clones the damn layers.
         //      Fix that.
-        let layers: Vec<_> = layers.into_iter()
-            .map(|layer| layer.0)
-            .collect();
+        let layers: Vec<_> = layers.into_iter().map(|layer| layer.0).collect();
         Self(hnsw::Hnsw::new(layers))
     }
 
@@ -266,15 +274,16 @@ impl Hnsw {
         const F32_SIZE: usize = std::mem::size_of::<f32>();
         let vector_byte_size = vecs.0.vector_byte_size();
         if vector_byte_size != 1536 * F32_SIZE {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                format!(
-                    "Vector dimensionality expected to be 1536, but found {}",
-                    vector_byte_size / F32_SIZE
-                )
-            ));
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Vector dimensionality expected to be 1536, but found {}",
+                vector_byte_size / F32_SIZE
+            )));
         }
         let default_comparator = CosineDistance1536::new(&vecs.0);
-        Ok(Self(hnsw::Hnsw::generate(&bp.into_raw(), &default_comparator)))
+        Ok(Self(hnsw::Hnsw::generate(
+            &bp.into_raw(),
+            &default_comparator,
+        )))
     }
 
     #[staticmethod]
@@ -289,6 +298,20 @@ impl Hnsw {
             .map(Layer)
             .map_err(|err| SerializeError::new_err(format!("{err:?}")))?;
         Ok(Self::new(vec![layer]))
+    }
+
+    pub fn layer_count(&self) -> usize {
+        self.0.layer_count()
+    }
+
+    pub fn layer_arrow_array(
+        &self,
+        index: usize,
+    ) -> PyResult<PyArrowType<ArrayData>> {
+        self.0.layers()[index]
+            .to_arrow_array()
+            .map(|a| PyArrowType(a.into_data()))
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 
     pub fn metadata(&self) -> HnswMetadata {
@@ -344,11 +367,12 @@ wrap_index_type![Hnsw1024, Hnsw1536, IndexConfiguration];
 // - access distances
 // - search([vector]) -> [queue]
 
-
-create_exception!(hnsw_redux, SerializeError, PyException, "Failed to serialize");
-
-
-
+create_exception!(
+    hnsw_redux,
+    SerializeError,
+    PyException,
+    "Failed to serialize"
+);
 
 #[derive(Clone, Copy, Debug)]
 #[pyclass(module = "hnsw_redux")]
@@ -389,8 +413,6 @@ impl From<params::BuildParams> for BuildParams {
     }
 }
 
-
-
 #[derive(Clone, Copy, Debug)]
 #[pyclass(module = "hnsw_redux")]
 pub struct OptimizationParams {
@@ -426,8 +448,6 @@ impl From<params::OptimizationParams> for OptimizationParams {
         }
     }
 }
-
-
 
 #[derive(Clone, Copy, Debug)]
 #[pyclass(module = "hnsw_redux")]

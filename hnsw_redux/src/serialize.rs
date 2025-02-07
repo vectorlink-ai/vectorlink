@@ -6,17 +6,14 @@ use std::{
     sync::Arc,
 };
 
-use datafusion::{
-    arrow::{
-        array::{
-            Array, FixedSizeListArray, RecordBatch, RecordBatchIterator,
-            RecordBatchReader, UInt32Array,
-        },
-        buffer::{Buffer, ScalarBuffer},
-        datatypes::{DataType, Field, Schema},
-        error::ArrowError,
-        ffi_stream::ArrowArrayStreamReader,
+use datafusion::arrow::{
+    array::{
+        Array, FixedSizeListArray, RecordBatch, RecordBatchReader, UInt32Array,
     },
+    buffer::{Buffer, ScalarBuffer},
+    datatypes::{DataType, Field, Schema},
+    error::ArrowError,
+    ffi_stream::ArrowArrayStreamReader,
 };
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -173,7 +170,6 @@ impl LayerMetadata {
 }
 
 impl Layer {
-
     pub fn from_arrow(
         reader: ArrowArrayStreamReader,
         number_of_records: usize,
@@ -185,7 +181,9 @@ impl Layer {
             let single_neighborhood_size: usize =
                 (*single_neighborhood_size).try_into().unwrap();
             let mut neighborhoods = unsafe {
-                SimdAlignedAllocation::<u32>::alloc(number_of_records * single_neighborhood_size)
+                SimdAlignedAllocation::<u32>::alloc(
+                    number_of_records * single_neighborhood_size,
+                )
             };
 
             for batch in reader {
@@ -197,9 +195,9 @@ impl Layer {
                 let child_data = data.child_data();
 
                 let data_slice: &[u32] = unsafe {
-                    let last_buffer = child_data[0].buffers().last()
-                        .unwrap()
-                        .as_ptr() as *const u32;
+                    let last_buffer =
+                        child_data[0].buffers().last().unwrap().as_ptr()
+                            as *const u32;
                     std::slice::from_raw_parts(last_buffer, u32_count)
                 };
                 let destination_slice =
@@ -232,14 +230,6 @@ impl Layer {
             Arc::new(Field::new("index", DataType::UInt32, false));
 
         Arc::new(Schema::new([index_field, neighborhood_field]))
-    }
-
-    pub fn neighborhood_arrow_reader(
-        &self,
-        batch_size: usize,
-    ) -> impl RecordBatchReader + '_ {
-        let schema = self.arrow_schema();
-        RecordBatchIterator::new(self.neighborhood_batches(batch_size), schema)
     }
 
     pub fn neighborhood_batches(

@@ -1,11 +1,11 @@
 {pkgs, mkShell}:
 let
   pythonVenvShellHook = ''
-cd hnsw_redux-python
-uv sync --no-install-project
-source .venv/bin/activate
-cd ..
-'';
+    cd hnsw_redux-python
+    uv sync --no-install-project
+    source .venv/bin/activate
+    cd ..
+  '';
 in
 mkShell {
   buildInputs = with pkgs; [

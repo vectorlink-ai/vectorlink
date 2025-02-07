@@ -255,6 +255,19 @@ impl HnswMetadata {
 #[pyclass(module = "hnsw_redux")]
 pub struct Hnsw(hnsw::Hnsw);
 
+fn ensure_1536_vector_size(vecs: &Vectors) -> PyResult<()> {
+    const F32_SIZE: usize = std::mem::size_of::<f32>();
+    let vector_byte_size = vecs.0.vector_byte_size();
+    if vector_byte_size != 1536 * F32_SIZE {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Vector dimensionality expected to be 1536, but found {}",
+            vector_byte_size / F32_SIZE
+        )));
+    }
+
+    Ok(())
+}
+
 #[pymethods]
 impl Hnsw {
     #[new]
@@ -271,19 +284,22 @@ impl Hnsw {
         bp: BuildParams,
         vecs: &Vectors,
     ) -> PyResult<Self> {
-        const F32_SIZE: usize = std::mem::size_of::<f32>();
-        let vector_byte_size = vecs.0.vector_byte_size();
-        if vector_byte_size != 1536 * F32_SIZE {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Vector dimensionality expected to be 1536, but found {}",
-                vector_byte_size / F32_SIZE
-            )));
-        }
+        ensure_1536_vector_size(vecs)?;
         let default_comparator = CosineDistance1536::new(&vecs.0);
         Ok(Self(hnsw::Hnsw::generate(
             &bp.into_raw(),
             &default_comparator,
         )))
+    }
+
+    pub fn optimize_with_cosine_distance_1536(
+        &mut self,
+        op: OptimizationParams,
+        vecs: &Vectors,
+    ) -> PyResult<f32> {
+        ensure_1536_vector_size(vecs)?;
+        let default_comparator = CosineDistance1536::new(&vecs.0);
+        Ok(self.0.optimize(&op.into_raw(), &default_comparator))
     }
 
     #[staticmethod]

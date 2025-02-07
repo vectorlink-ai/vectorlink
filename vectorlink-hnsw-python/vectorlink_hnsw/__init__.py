@@ -1,7 +1,10 @@
 import datafusion as df
 import pyarrow as pa
 
-from .hnsw_redux import *
+from .vectorlink_hnsw import *
+__doc__ = vectorlink_hnsw.__doc__
+if hasattr(vectorlink_hnsw, "__all__"):
+    __all__ = vectorlink_hnsw.__all__
 
 def generate_hnsw_from_vecs(frame: df.DataFrame) -> Hnsw:
     """Generate a new HNSW from a dataframe that has t least the column 'vector'.

@@ -4,3 +4,4 @@ Cargo.lock
 .emacs.desktop*
 
 *.abi3.so
+**/__pycache__/

@@ -1,5 +1,9 @@
 #![allow(unexpected_cfgs)]
 
+use ::vectorlink_hnsw::{
+    comparator::CosineDistance1536, hnsw, index, layer, params, serialize,
+    util, vectors,
+};
 use datafusion::arrow::{
     array::{Array, ArrayData},
     ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
@@ -10,12 +14,6 @@ use pyo3::{
     exceptions::{PyException, PyIndexError, PyRuntimeError},
     prelude::*,
     types::PyCapsule,
-};
-use ::vectorlink_hnsw::{
-    comparator::CosineDistance1536,
-    hnsw, index, layer, params, serialize,
-    util,
-    vectors,
 };
 
 // This function defines a Python module. Its name MUST match the the `lib.name`
@@ -374,9 +372,13 @@ create_exception!(
 #[derive(Clone, Copy, Debug)]
 #[pyclass(module = "vectorlink_hnsw")]
 pub struct BuildParams {
+    #[pyo3(get, set)]
     pub order: usize,
+    #[pyo3(get, set)]
     pub neighborhood_size: usize,
+    #[pyo3(get, set)]
     pub bottom_neighborhood_size: usize,
+    #[pyo3(get, set)]
     pub optimization_params: OptimizationParams,
 }
 
@@ -413,8 +415,11 @@ impl From<params::BuildParams> for BuildParams {
 #[derive(Clone, Copy, Debug)]
 #[pyclass(module = "vectorlink_hnsw")]
 pub struct OptimizationParams {
+    #[pyo3(get, set)]
     pub search_params: SearchParams,
+    #[pyo3(get, set)]
     pub improvement_threshold: f32,
+    #[pyo3(get, set)]
     pub recall_target: f32,
 }
 
@@ -449,9 +454,13 @@ impl From<params::OptimizationParams> for OptimizationParams {
 #[derive(Clone, Copy, Debug)]
 #[pyclass(module = "vectorlink_hnsw")]
 pub struct SearchParams {
+    #[pyo3(get, set)]
     pub parallel_visit_count: usize,
+    #[pyo3(get, set)]
     pub visit_queue_len: usize,
+    #[pyo3(get, set)]
     pub search_queue_len: usize,
+    #[pyo3(get, set)]
     pub circulant_parameter_count: usize,
 }
 

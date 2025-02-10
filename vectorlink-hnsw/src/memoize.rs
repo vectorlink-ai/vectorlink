@@ -154,8 +154,8 @@ impl MemoizedCentroidDistances {
             offsets.cast(),
             u16x8::splat(0),
         );
-        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
-        let partial_dot_products = f32x8::from(result);
+        let result = from_f16x8_to_f32x8(gathered.into());
+        let partial_dot_products: Simd<f32, 8> = f32x8::from(result);
 
         // we now have two simd registers with mutually exclusive lanes filled.
         // summing them should just give us a single register with all lanes filled.
@@ -167,8 +167,7 @@ impl MemoizedCentroidDistances {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_or_default(norms_slice, i);
-        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
-        f32x8::from(result)
+        from_f16x8_to_f32x8(gathered)
     }
 
     #[inline]
@@ -177,9 +176,63 @@ impl MemoizedCentroidDistances {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
-        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
-        f32x8::from(result)
+        from_f16x8_to_f32x8(gathered)
     }
+}
+
+#[inline]
+#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
+fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    unsafe { std::arch::x86_64::_mm256_cvtph_ps(src.into()) }
+}
+
+// NOTE: This is slashed-out because making it work properly was taking too
+//       much time and we're not using the code THAT much.
+// #[inline]
+// #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+// fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+//     use core::arch::aarch64::{
+//         uint16x4_t, uint16x8_t, uint32x4_t, float32x4_t,
+//         vget_high_u16, vget_low_u16, vmovl_u16, vcvtq_f32_u32
+//     };
+//     use std::simd::f32x4;
+
+//     #[inline(always)]
+//     unsafe fn extract_blocks(src: uint16x8_t) -> (uint16x4_t, uint16x4_t) {
+//         (vget_high_u16(src), vget_low_u16(src))
+//     }
+
+//     #[inline(always)]
+//     unsafe fn simdify_block(block: uint16x4_t) -> Simd<f32, 4> {
+//         let block: uint32x4_t = vmovl_u16(block); // widen each scalar
+//         let block: float32x4_t = vcvtq_f32_u32(block); // floatify
+//         block.into()
+//     }
+
+//     let src: uint16x8_t = src.into();
+//     unsafe { // Process as `high` and `low` blocks of values, each of 4 elements
+//         let (h, l): (uint16x4_t, uint16x4_t) = extract_blocks(src);
+//         let (h, l): (f32x4, f32x4) = (simdify_block(h), simdify_block(l));
+//         let array: [[f32; 4]; 2] = [h.to_array(), l.to_array()];
+//         let array: [f32; 8] = std::mem::transmute(array);
+//         Simd::<f32, 8>::from_array(array)
+//     }
+// }
+
+#[inline]
+#[cfg(not(any( // default non-SIMD implementation
+    all(target_arch = "x86_64", target_feature = "f16c"),
+    // all(target_arch = "aarch64", target_feature = "neon"),
+)))]
+fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    let src: &[u16; 8] = src.as_array();
+    let mut dst = [0_f32; 8];
+    for i in 0..8 {
+        // Slow but safe. Cannot use `std::mem::transmute()`
+        // because `src` and `dst` have different sizes.
+        dst[i] = f32::from(src[i]);
+    }
+    Simd::<f32, 8>::from_array(dst)
 }
 
 

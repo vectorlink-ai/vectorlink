@@ -111,7 +111,9 @@ impl Bitmap {
         let self_simds: &[u64x64] = self.data.as_simd();
         let other_simds: &mut [u64x64] = other.data.as_simd_mut();
 
-        for (self_simd, other_simd) in self_simds.iter().zip(other_simds.iter_mut()) {
+        for (self_simd, other_simd) in
+            self_simds.iter().zip(other_simds.iter_mut())
+        {
             *other_simd = !*self_simd;
         }
     }
@@ -121,16 +123,18 @@ impl Bitmap {
         let self_simds: &[u64x64] = self.data.as_simd();
         let other_simds: &mut [u64x64] = other.data.as_simd_mut();
 
-        for (self_simd, other_simd) in self_simds.iter().zip(other_simds.iter_mut()) {
+        for (self_simd, other_simd) in
+            self_simds.iter().zip(other_simds.iter_mut())
+        {
             *other_simd = !*self_simd;
         }
     }
 
     #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = bool> + '_ {
-        self.data
-            .iter()
-            .flat_map(|elt| (0..8).map(move |index| Self::check_elt(*elt, index)))
+        self.data.iter().flat_map(|elt| {
+            (0..8).map(move |index| Self::check_elt(*elt, index))
+        })
     }
 
     pub fn par_iter(&self) -> impl IndexedParallelIterator<Item = bool> + '_ {

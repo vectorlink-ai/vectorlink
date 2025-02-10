@@ -6,7 +6,6 @@ use std::{
     simd::{LaneCount, Simd, SimdElement, SupportedLaneCount},
 };
 
-
 /// Align allocations to be rust simd friendly.
 /// The biggest possible simd abstration is f64x64, which is 512 bytes. So this
 /// will make sure we're aligned to that, allowing simd instructions over the
@@ -84,7 +83,8 @@ impl<T: SimdElement> SimdAlignedAllocation<T> {
         unsafe {
             std::slice::from_raw_parts(
                 self.data.as_ptr() as *const Simd<T, LANES>,
-                Self::rounded_len(self.len) / std::mem::size_of::<Simd<T, LANES>>(),
+                Self::rounded_len(self.len)
+                    / std::mem::size_of::<Simd<T, LANES>>(),
             )
         }
     }
@@ -96,7 +96,8 @@ impl<T: SimdElement> SimdAlignedAllocation<T> {
         unsafe {
             std::slice::from_raw_parts_mut(
                 self.data.as_ptr() as *mut Simd<T, LANES>,
-                Self::rounded_len(self.len) / std::mem::size_of::<Simd<T, LANES>>(),
+                Self::rounded_len(self.len)
+                    / std::mem::size_of::<Simd<T, LANES>>(),
             )
         }
     }
@@ -123,13 +124,20 @@ impl SimdAlignedAllocation<u8> {
 impl<T: SimdElement> Deref for SimdAlignedAllocation<T> {
     type Target = [T];
     fn deref(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.data.as_ptr() as *const T, self.len) }
+        unsafe {
+            std::slice::from_raw_parts(self.data.as_ptr() as *const T, self.len)
+        }
     }
 }
 
 impl<T: SimdElement> DerefMut for SimdAlignedAllocation<T> {
     fn deref_mut(&mut self) -> &mut [T] {
-        unsafe { std::slice::from_raw_parts_mut(self.data.as_ptr() as *mut T, self.len) }
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                self.data.as_ptr() as *mut T,
+                self.len,
+            )
+        }
     }
 }
 
@@ -164,7 +172,8 @@ mod tests {
     use super::*;
     #[test]
     fn allocate_simd_aligned() {
-        let data: SimdAlignedAllocation<u8> = SimdAlignedAllocation::alloc_zeroed(12345);
+        let data: SimdAlignedAllocation<u8> =
+            SimdAlignedAllocation::alloc_zeroed(12345);
         assert_eq!(data.as_ptr() as usize % 256, 0);
     }
 }

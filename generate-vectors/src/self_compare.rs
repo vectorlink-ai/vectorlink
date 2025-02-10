@@ -4,12 +4,12 @@ use anyhow::Context;
 
 use clap::Parser;
 use csv::Writer;
-use vectorlink_hnsw::{
-    comparator::CosineDistance1536, index::IndexConfiguration, layer::VectorComparator,
-    vectors::Vectors,
-};
 use nalgebra::{DMatrix, DVector};
 use rayon::prelude::*;
+use vectorlink_hnsw::{
+    comparator::CosineDistance1536, index::IndexConfiguration,
+    layer::VectorComparator, vectors::Vectors,
+};
 
 use crate::{
     graph::{CompareGraph, FullGraph},
@@ -69,13 +69,15 @@ pub fn self_compare_record_distances(
             .get(field)
             .expect("field missing on source graph")
             .record_id_to_value_id(target_record);
-        if let (Some(source_vector_id), Some(target_vector_id)) = (source_value_id, target_value_id)
+        if let (Some(source_vector_id), Some(target_vector_id)) =
+            (source_value_id, target_value_id)
         {
             let source_vec = &graph.vecs[field][source_vector_id as usize];
             let target_vec = &graph.vecs[field][target_vector_id as usize];
             let dummy = Vectors::empty(6144);
             let comparator = CosineDistance1536::new(&dummy);
-            let distance = comparator.compare_vec_unstored(source_vec, target_vec);
+            let distance =
+                comparator.compare_vec_unstored(source_vec, target_vec);
             results.push(distance);
         } else {
             results.push(0.5); // NOTE: This may be too unprincipled
@@ -93,8 +95,14 @@ pub fn self_compare_records(
     target_record: u32,
     weights: &Vec<(String, f32)>,
 ) -> f32 {
-    let results = self_compare_record_distances(graph, source_record, target_record, weights);
-    let betas: DVector<f32> = DVector::from(weights.iter().map(|(_, w)| *w).collect::<Vec<_>>());
+    let results = self_compare_record_distances(
+        graph,
+        source_record,
+        target_record,
+        weights,
+    );
+    let betas: DVector<f32> =
+        DVector::from(weights.iter().map(|(_, w)| *w).collect::<Vec<_>>());
     let x: DMatrix<f32> = DMatrix::from_row_iterator(1, results.len(), results);
     let y_hat = x * betas;
     let sigmoid_y_hat = sigmoid(&y_hat);
@@ -102,9 +110,13 @@ pub fn self_compare_records(
 }
 
 impl SelfCompareCommand {
-    pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+    pub async fn execute(
+        &self,
+        _config: &EmbedderMetadata,
+    ) -> Result<(), anyhow::Error> {
         let weights_map: HashMap<String, f32> =
-            serde_json::from_str(&self.weights).context("Could not parse as weights")?;
+            serde_json::from_str(&self.weights)
+                .context("Could not parse as weights")?;
         let weights: Vec<(String, f32)> = weights_map
             .iter()
             .map(|(s, f)| (s.to_string(), *f))
@@ -112,15 +124,21 @@ impl SelfCompareCommand {
 
         let graph_dir_path = Path::new(&self.graph_dir);
         let graph_path = graph_dir_path.join("aggregated.graph");
-        let graph_file = File::open(graph_path).context("graph file could not be opened")?;
-        let graph: FullGraph =
-            serde_json::from_reader(graph_file).context("Unable to load graph")?;
+        let graph_file =
+            File::open(graph_path).context("graph file could not be opened")?;
+        let graph: FullGraph = serde_json::from_reader(graph_file)
+            .context("Unable to load graph")?;
 
-        let hnsw_root_directory = graph_dir_path.join(format!("{}.hnsw", &self.filter_field));
-        let hnsw: IndexConfiguration =
-            IndexConfiguration::load(&self.filter_field, &hnsw_root_directory, graph_dir_path)?;
+        let hnsw_root_directory =
+            graph_dir_path.join(format!("{}.hnsw", &self.filter_field));
+        let hnsw: IndexConfiguration = IndexConfiguration::load(
+            &self.filter_field,
+            &hnsw_root_directory,
+            graph_dir_path,
+        )?;
 
-        let field_graph = graph.get(&self.filter_field).expect("No field graph found");
+        let field_graph =
+            graph.get(&self.filter_field).expect("No field graph found");
 
         // Source Value id is position, and results are target value ids.
         const K_NEIGHBORS: usize = 20;
@@ -152,7 +170,8 @@ impl SelfCompareCommand {
             })
             .collect();
 
-        let field_vecs: HashMap<String, Vectors> = graph.load_vecs(graph_dir_path);
+        let field_vecs: HashMap<String, Vectors> =
+            graph.load_vecs(graph_dir_path);
         let compare_graph = CompareGraph::new(&graph, field_vecs);
 
         let mut wtr = Writer::from_path(&self.output_file)?;
@@ -163,12 +182,20 @@ impl SelfCompareCommand {
                     if !self.include_self && source == *target {
                         continue;
                     }
-                    let probability =
-                        self_compare_records(&compare_graph, source, *target, &weights);
+                    let probability = self_compare_records(
+                        &compare_graph,
+                        source,
+                        *target,
+                        &weights,
+                    );
                     if probability > self.match_threshold {
                         let source_id = graph.record_id_field_value(source);
                         let target_id = graph.record_id_field_value(*target);
-                        wtr.write_record([source_id, target_id, &format!("{}", probability)])?;
+                        wtr.write_record([
+                            source_id,
+                            target_id,
+                            &format!("{}", probability),
+                        ])?;
                     }
                 }
             }

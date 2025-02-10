@@ -1,9 +1,11 @@
 #![feature(test)]
 
 extern crate test;
+use test::Bencher;
 use vectorlink_hnsw::{
     comparator::{
-        NewDotProductCentroidDistanceCalculator8, NewEuclideanDistance8x8, NewMemoizedComparator128,
+        NewDotProductCentroidDistanceCalculator8, NewEuclideanDistance8x8,
+        NewMemoizedComparator128,
     },
     index::{Index, IndexConfiguration, Pq1024x8},
     params::{BuildParams, SearchParams},
@@ -11,7 +13,6 @@ use vectorlink_hnsw::{
     test_util::random_vectors,
     vectors::Vector,
 };
-use test::Bencher;
 
 #[bench]
 fn bench_pq_construction(b: &mut Bencher) {
@@ -72,7 +73,11 @@ fn bench_pq_search(b: &mut Bencher) {
         quantizer_search_params,
         0x533D,
     );
-    let index = IndexConfiguration::Pq1024x8(Pq1024x8::new("dummy".to_string(), pq, vecs));
+    let index = IndexConfiguration::Pq1024x8(Pq1024x8::new(
+        "dummy".to_string(),
+        pq,
+        vecs,
+    ));
     let vec = &random_vectors(1, 1024, 0x12345)[0];
     let sp = SearchParams::default();
     b.iter(|| index.search(Vector::Slice(vec), &sp));

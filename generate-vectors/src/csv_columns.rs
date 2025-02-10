@@ -42,12 +42,15 @@ pub struct CsvColumnsCommand {
 }
 
 impl CsvColumnsCommand {
-    pub async fn execute(&self, config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+    pub async fn execute(
+        &self,
+        config: &EmbedderMetadata,
+    ) -> Result<(), anyhow::Error> {
         let template_dir = Path::new(&self.template_dir);
-        let (template_names, templates) =
-            read_templates_from_dir(template_dir).context("failed loading templates dir")?;
-        let reader =
-            file_or_stdin_reader(self.input.as_ref()).context("could not open input file")?;
+        let (template_names, templates) = read_templates_from_dir(template_dir)
+            .context("failed loading templates dir")?;
+        let reader = file_or_stdin_reader(self.input.as_ref())
+            .context("could not open input file")?;
         let mut csv_reader = csv::ReaderBuilder::new()
             .has_headers(false)
             .from_reader(reader);
@@ -70,11 +73,14 @@ impl CsvColumnsCommand {
             .context("I field is not in header")?;
         let mut templates_to_print = self.print_templates;
         for (ix, record) in csv_reader.into_records().enumerate() {
-            let record = record.with_context(|| format!("could not parse record {ix}"))?;
+            let record = record
+                .with_context(|| format!("could not parse record {ix}"))?;
             if templates_to_print.is_some() {
                 eprintln!("\n--------------------")
             };
-            for (field_index, template_name) in template_names.iter().enumerate() {
+            for (field_index, template_name) in
+                template_names.iter().enumerate()
+            {
                 if template_name == ID_FIELD_NAME {
                     let id = record[id_field_idx].to_string();
                     string_vecs[field_index].push(id);
@@ -106,18 +112,24 @@ impl CsvColumnsCommand {
         }
 
         // csv has been split up into columns. call out
-        std::fs::create_dir_all(dir_path).context("could not create output directory")?;
+        std::fs::create_dir_all(dir_path)
+            .context("could not create output directory")?;
         let mut fields = Vec::new();
-        for (template_name, strings) in template_names.into_iter().zip(string_vecs) {
+        for (template_name, strings) in
+            template_names.into_iter().zip(string_vecs)
+        {
             let graph = Graph::new(strings.iter().map(|s| s.as_str()));
             if template_name != ID_FIELD_NAME {
-                let output_path = dir_path.join(format!("{}.vecs", template_name));
-                let writer = File::create(&output_path)
-                    .with_context(|| format!("could not create output file {output_path:?}"))?;
+                let output_path =
+                    dir_path.join(format!("{}.vecs", template_name));
+                let writer = File::create(&output_path).with_context(|| {
+                    format!("could not create output file {output_path:?}")
+                })?;
                 let vmd = VectorsMetadata {
                     vector_byte_size: config.model.embedding_byte_size(),
                 };
-                let metadata_path = dir_path.join(format!("{}.metadata.json", template_name));
+                let metadata_path =
+                    dir_path.join(format!("{}.metadata.json", template_name));
                 serde_json::to_writer(File::create(metadata_path)?, &vmd)?;
                 config.embeddings_for_into(&graph.values, writer).await?;
             }
@@ -125,8 +137,9 @@ impl CsvColumnsCommand {
         }
 
         let output_path = dir_path.join("aggregated.graph");
-        let writer = File::create(&output_path)
-            .with_context(|| format!("could not create output file {output_path:?}"))?;
+        let writer = File::create(&output_path).with_context(|| {
+            format!("could not create output file {output_path:?}")
+        })?;
         let full_graph = FullGraph::new(fields);
         serde_json::to_writer(&writer, &full_graph)?;
         Ok(())

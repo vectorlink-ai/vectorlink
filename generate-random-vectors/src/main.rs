@@ -16,7 +16,8 @@ struct Command {
 }
 fn main() -> io::Result<()> {
     let args = Command::parse();
-    let vectors = random_vectors_normalized(args.num_vecs, args.vector_size, args.seed);
+    let vectors =
+        random_vectors_normalized(args.num_vecs, args.vector_size, args.seed);
     vectors.store(args.vector_directory, &args.domain)?;
 
     Ok(())

@@ -9,13 +9,13 @@ use argmin_observer_slog::SlogLogger;
 use anyhow::Context;
 
 use clap::Parser;
+use nalgebra::DVector;
+use smartcore::metrics::roc_auc_score;
 use vectorlink_hnsw::{
     index::{Index, IndexConfiguration},
     params::SearchParams,
     vectors::{Vector, Vectors},
 };
-use nalgebra::DVector;
-use smartcore::metrics::roc_auc_score;
 
 use crate::{
     graph::{CompareGraph, FullGraph},
@@ -54,22 +54,31 @@ pub struct SelfWeightsCommand {
 }
 
 impl SelfWeightsCommand {
-    pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+    pub async fn execute(
+        &self,
+        _config: &EmbedderMetadata,
+    ) -> Result<(), anyhow::Error> {
         let graph_dir_path = Path::new(&self.graph_dir);
         let graph_path = graph_dir_path.join("aggregated.graph");
-        let graph_file = File::open(&graph_path).context("graph file could not be loaded")?;
+        let graph_file = File::open(&graph_path)
+            .context("graph file could not be loaded")?;
         eprintln!("graph_path: {:?}", &graph_path);
-        let graph: FullGraph =
-            serde_json::from_reader(graph_file).context("Unable to load graph")?;
+        let graph: FullGraph = serde_json::from_reader(graph_file)
+            .context("Unable to load graph")?;
 
-        let hnsw_root_directory = graph_dir_path.join(format!("{}.hnsw", &self.filter_field));
-        let hnsw: IndexConfiguration =
-            IndexConfiguration::load(&self.filter_field, &hnsw_root_directory, graph_dir_path)?;
+        let hnsw_root_directory =
+            graph_dir_path.join(format!("{}.hnsw", &self.filter_field));
+        let hnsw: IndexConfiguration = IndexConfiguration::load(
+            &self.filter_field,
+            &hnsw_root_directory,
+            graph_dir_path,
+        )?;
 
         let vectors = Vectors::load(graph_dir_path, &self.filter_field)
             .context("Unable to load vector file")?;
 
-        let field_graph = graph.get(&self.filter_field).expect("No field graph found");
+        let field_graph =
+            graph.get(&self.filter_field).expect("No field graph found");
 
         // Source Value id is position, and results are target value ids.
         let results: Vec<Vec<u32>> = vectors
@@ -106,7 +115,8 @@ impl SelfWeightsCommand {
 
         let vecs: HashMap<String, Vectors> = graph.load_vecs(graph_dir_path);
 
-        let answers_file = File::open(&self.answers_file).context("Unable to open answers file")?;
+        let answers_file = File::open(&self.answers_file)
+            .context("Unable to open answers file")?;
         let mut rdr = csv::Reader::from_reader(answers_file);
         let mut answers: HashMap<String, Vec<String>> = HashMap::new();
         for result in rdr.records() {
@@ -114,22 +124,28 @@ impl SelfWeightsCommand {
             if let Some(result) = answers.get_mut(&record[0]) {
                 result.push(record[1].to_string());
             } else {
-                answers.insert(record[0].to_string(), vec![record[1].to_string()]);
+                answers
+                    .insert(record[0].to_string(), vec![record[1].to_string()]);
             }
         }
 
         let compare_graph = CompareGraph::new(&graph, vecs);
         let proportion_for_test = 0.33;
         let comparison_fields = self.comparison_fields.to_vec();
-        let (feature_names, train_features, train_answers, test_features, test_answers) =
-            build_test_and_train(
-                proportion_for_test,
-                comparison_fields,
-                answers,
-                &compare_graph,
-                &compare_graph,
-                candidates_for_compare,
-            );
+        let (
+            feature_names,
+            train_features,
+            train_answers,
+            test_features,
+            test_answers,
+        ) = build_test_and_train(
+            proportion_for_test,
+            comparison_fields,
+            answers,
+            &compare_graph,
+            &compare_graph,
+            candidates_for_compare,
+        );
 
         // Define our cost function
         let cost = MatchClassifier {
@@ -138,7 +154,8 @@ impl SelfWeightsCommand {
         };
         let field_width = self.comparison_fields.len();
         // The final value is the intercept (and not a weight) which we also want to learn!
-        let init_param: DVector<f32> = DVector::from(vec![1.0; field_width + 1]);
+        let init_param: DVector<f32> =
+            DVector::from(vec![1.0; field_width + 1]);
 
         let linesearch = MoreThuenteLineSearch::new().with_c(1e-4, 0.9)?;
 
@@ -171,7 +188,8 @@ impl SelfWeightsCommand {
             .zip(betas.data.as_vec().iter().copied())
             .collect();
         eprintln!("ROC AUC {}", score);
-        let weights_str = serde_json::to_string(&weights).context("Could not serialize weights")?;
+        let weights_str = serde_json::to_string(&weights)
+            .context("Could not serialize weights")?;
         eprintln!("{weights_str}");
         Ok(())
     }

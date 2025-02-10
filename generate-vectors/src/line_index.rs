@@ -23,7 +23,10 @@ pub struct LineIndexCommand {
     index_file: String,
 }
 
-pub fn read_index_position(index_file: &File, record_id: usize) -> Result<u64, anyhow::Error> {
+pub fn read_index_position(
+    index_file: &File,
+    record_id: usize,
+) -> Result<u64, anyhow::Error> {
     let mut buf = [0u8; 8];
     let offset = record_id * std::mem::size_of::<u64>();
     index_file
@@ -56,7 +59,8 @@ pub fn create_index_lines<P1: AsRef<Path>, P2: AsRef<Path>>(
     record_file_path: P1,
     index_file_path: P2,
 ) -> Result<(), anyhow::Error> {
-    let record_file = File::open(record_file_path).context("Unable to open the record file")?;
+    let record_file = File::open(record_file_path)
+        .context("Unable to open the record file")?;
     let mut record_file_cursor = BufReader::new(record_file);
     let mut index_file = File::create(index_file_path)
         .context("Unable to open or create the index file for write")?;
@@ -77,7 +81,10 @@ pub fn create_index_lines<P1: AsRef<Path>, P2: AsRef<Path>>(
 }
 
 impl LineIndexCommand {
-    pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+    pub async fn execute(
+        &self,
+        _config: &EmbedderMetadata,
+    ) -> Result<(), anyhow::Error> {
         create_index_lines(&self.record_file, &self.index_file)
     }
 }

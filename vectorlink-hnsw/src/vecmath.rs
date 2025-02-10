@@ -4,8 +4,9 @@ use std::simd::{LaneCount, Simd, StdFloat, SupportedLaneCount};
 use unroll::unroll_for_loops;
 
 pub const PRIMES: [usize; 43] = [
-    1, 2, 59063, 79193, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
-    73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173,
+    1, 2, 59063, 79193, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47,
+    53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131,
+    137, 139, 149, 151, 157, 163, 167, 173,
 ];
 
 // both unroll and (especially) inlining drastically improve speed
@@ -94,7 +95,8 @@ macro_rules! dot_product_small_64 {
 
             for i in 0..(64 / $n) {
                 let offset = i * $n;
-                let partial: Simd<f32, $n> = Simd::from_slice(&sum.as_array()[offset..offset + $n]);
+                let partial: Simd<f32, $n> =
+                    Simd::from_slice(&sum.as_array()[offset..offset + $n]);
                 results[i] = partial.reduce_sum();
             }
         }
@@ -120,8 +122,9 @@ macro_rules! euclidean_small_64 {
 
             for i in 0..(64 / $n) {
                 let offset = i * $n;
-                let partial: Simd<f32, $n> =
-                    Simd::from_slice(&squared_dif.as_array()[offset..offset + $n]);
+                let partial: Simd<f32, $n> = Simd::from_slice(
+                    &squared_dif.as_array()[offset..offset + $n],
+                );
                 results[i] = partial.reduce_sum().sqrt();
             }
         }
@@ -132,7 +135,10 @@ euclidean_small_64!(multi_euclidean_4x16, 16);
 euclidean_small_64!(multi_euclidean_8x8, 8);
 euclidean_small_64!(multi_euclidean_16x4, 4);
 
-pub fn partial_dot_product<const N: usize>(left: &[f32; N], right: &[f32; N]) -> f32
+pub fn partial_dot_product<const N: usize>(
+    left: &[f32; N],
+    right: &[f32; N],
+) -> f32
 where
     LaneCount<N>: SupportedLaneCount,
 {
@@ -202,7 +208,8 @@ mod tests {
     #[test]
     fn normalize_1024_vec() {
         let vec = &mut random_vectors(1, 1024, 0x533D)[0];
-        let cast: &mut [f32; 1024] = unsafe { &mut *(vec.as_mut_ptr() as *mut [f32; 1024]) };
+        let cast: &mut [f32; 1024] =
+            unsafe { &mut *(vec.as_mut_ptr() as *mut [f32; 1024]) };
         let norm = cast.iter().map(|f| f * f).sum::<f32>().sqrt();
         let normalized: Vec<f32> = cast.iter().map(|f| f / norm).collect();
 

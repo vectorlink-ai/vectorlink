@@ -10,7 +10,9 @@ pub fn read_templates_from_dir<'a, P: AsRef<Path>>(
 ) -> Result<(Vec<String>, Handlebars<'a>), anyhow::Error> {
     let mut template_names = vec![ID_FIELD_NAME.to_string()];
     let mut templates = Handlebars::new();
-    for entry in fs::read_dir(template_dir).context("could not read template dir")? {
+    for entry in
+        fs::read_dir(template_dir).context("could not read template dir")?
+    {
         let entry = entry.context("could not read entry in template dir")?;
         if !entry
             .file_type()
@@ -36,8 +38,8 @@ pub fn read_templates_from_dir<'a, P: AsRef<Path>>(
             .to_str()
             .expect("non utf8 file stem");
 
-        let template_source =
-            fs::read_to_string(entry.path()).context("could not read handlebars template")?;
+        let template_source = fs::read_to_string(entry.path())
+            .context("could not read handlebars template")?;
         templates
             .register_template_string(template_name, &template_source)
             .context("could not compile template")?;

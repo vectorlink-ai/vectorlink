@@ -33,7 +33,10 @@ impl Vectors {
         Self::new(unsafe { SimdAlignedAllocation::alloc(0) }, vector_byte_size)
     }
 
-    pub fn new(data: SimdAlignedAllocation<u8>, vector_byte_size: usize) -> Self {
+    pub fn new(
+        data: SimdAlignedAllocation<u8>,
+        vector_byte_size: usize,
+    ) -> Self {
         assert_eq!(0, data.len() % vector_byte_size);
         Self {
             data,
@@ -41,7 +44,10 @@ impl Vectors {
         }
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P, vector_byte_size: usize) -> io::Result<Self> {
+    pub fn from_file<P: AsRef<Path>>(
+        path: P,
+        vector_byte_size: usize,
+    ) -> io::Result<Self> {
         eprintln!("Loading vectors from file {:?}", path.as_ref());
         let file = File::open(path)?;
         let file_size = file.metadata()?.size() as usize;
@@ -147,7 +153,9 @@ impl Vectors {
                 match self.vector_byte_size {
                     4096 => normalize_aligned_1024(vector),
                     6114 => normalize_aligned_1536(vector),
-                    n => panic!("don't know how to normalize vectors of size {n}"),
+                    n => panic!(
+                        "don't know how to normalize vectors of size {n}"
+                    ),
                 }
             });
     }

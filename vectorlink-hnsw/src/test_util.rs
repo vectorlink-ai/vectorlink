@@ -7,7 +7,9 @@ pub fn random_vectors(num_vecs: usize, dimension: usize, seed: u64) -> Vectors {
     let float_len = num_vecs * dimension;
     let byte_len = float_len * std::mem::size_of::<f32>();
     let mut data = unsafe { SimdAlignedAllocation::alloc(byte_len) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut f32, float_len) };
+    let slice = unsafe {
+        std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut f32, float_len)
+    };
     for elt in slice.iter_mut() {
         *elt = rng.gen_range(-1.0..1.0);
     }
@@ -15,7 +17,11 @@ pub fn random_vectors(num_vecs: usize, dimension: usize, seed: u64) -> Vectors {
     Vectors::new(data, dimension * std::mem::size_of::<f32>())
 }
 
-pub fn random_vectors_normalized(num_vecs: usize, dimension: usize, seed: u64) -> Vectors {
+pub fn random_vectors_normalized(
+    num_vecs: usize,
+    dimension: usize,
+    seed: u64,
+) -> Vectors {
     let mut vectors = random_vectors(num_vecs, dimension, seed);
 
     // TODO VECTORIZE

@@ -51,7 +51,8 @@ impl<'a> QueueView<'a> {
                 {
                     idx += 1;
                 }
-                if idx == self.neighbors.len() || self.neighbors[idx] == pair.0 {
+                if idx == self.neighbors.len() || self.neighbors[idx] == pair.0
+                {
                     // bail if we ran past the end or ended up at ourselves.
                     return false;
                 }
@@ -95,10 +96,13 @@ mod tests {
 
     #[test]
     fn insert_into_empty() {
-        let mut empty_neighbors = SimdAlignedAllocation::alloc_default(24, u32::MAX);
-        let mut empty_distances = SimdAlignedAllocation::alloc_default(24, f32::MAX);
+        let mut empty_neighbors =
+            SimdAlignedAllocation::alloc_default(24, u32::MAX);
+        let mut empty_distances =
+            SimdAlignedAllocation::alloc_default(24, f32::MAX);
 
-        let mut queue = QueueView::new(&mut empty_neighbors, &mut empty_distances);
+        let mut queue =
+            QueueView::new(&mut empty_neighbors, &mut empty_distances);
         queue.insert((42, 0.5));
         queue.insert((42, 0.5));
         queue.insert((41, 0.5));

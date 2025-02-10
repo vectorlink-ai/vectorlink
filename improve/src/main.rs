@@ -30,7 +30,8 @@ fn main() -> io::Result<()> {
     let op = args.params.map_or_else(
         OptimizationParams::default,
         |sp_string| -> OptimizationParams {
-            serde_json::from_str(&sp_string).expect("Unable to parse search params")
+            serde_json::from_str(&sp_string)
+                .expect("Unable to parse search params")
         },
     );
 

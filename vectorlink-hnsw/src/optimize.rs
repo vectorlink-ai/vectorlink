@@ -2,7 +2,9 @@ use std::sync::{Mutex, MutexGuard};
 
 use rayon::prelude::*;
 
-use crate::{layer::VectorSearcher, queue_view::QueueView, util::SimdAlignedAllocation};
+use crate::{
+    layer::VectorSearcher, queue_view::QueueView, util::SimdAlignedAllocation,
+};
 
 pub struct LayerOptimizer<'a> {
     queues: Vec<Mutex<QueueView<'a>>>,
@@ -66,10 +68,16 @@ impl<'a> LayerOptimizer<'a> {
     }
 
     pub fn improve_all_neighbors<S: VectorSearcher>(&mut self, searcher: &S) {
-        self.improve_neighbors(searcher, (0..self.queues.len() as u32).into_par_iter())
+        self.improve_neighbors(
+            searcher,
+            (0..self.queues.len() as u32).into_par_iter(),
+        )
     }
 
-    pub fn improve_neighbors<S: VectorSearcher, I: ParallelIterator<Item = u32>>(
+    pub fn improve_neighbors<
+        S: VectorSearcher,
+        I: ParallelIterator<Item = u32>,
+    >(
         &mut self,
         searcher: &S,
         iter: I,

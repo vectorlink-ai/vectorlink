@@ -9,13 +9,13 @@ use argmin_observer_slog::SlogLogger;
 use anyhow::Context;
 
 use clap::Parser;
+use nalgebra::DVector;
+use smartcore::metrics::roc_auc_score;
 use vectorlink_hnsw::{
     index::{Index, IndexConfiguration},
     params::SearchParams,
     vectors::{Vector, Vectors},
 };
-use nalgebra::DVector;
-use smartcore::metrics::roc_auc_score;
 
 use crate::{
     graph::{CompareGraph, FullGraph},
@@ -60,20 +60,25 @@ pub struct WeightsCommand {
 }
 
 impl WeightsCommand {
-    pub async fn execute(&self, _config: &EmbedderMetadata) -> Result<(), anyhow::Error> {
+    pub async fn execute(
+        &self,
+        _config: &EmbedderMetadata,
+    ) -> Result<(), anyhow::Error> {
         let target_graph_dir_path = Path::new(&self.target_graph_dir);
         let source_graph_dir_path = Path::new(&self.source_graph_dir);
         let source_graph_path = source_graph_dir_path.join("aggregated.graph");
         let target_graph_path = target_graph_dir_path.join("aggregated.graph");
-        let source_graph_file =
-            File::open(&source_graph_path).context("source file could not be loaded")?;
+        let source_graph_file = File::open(&source_graph_path)
+            .context("source file could not be loaded")?;
         eprintln!("source_graph_path: {:?}", &source_graph_path);
         let source_graph: FullGraph =
-            serde_json::from_reader(source_graph_file).context("Unable to load source graph")?;
-        let target_graph_file =
-            File::open(target_graph_path).context("target file could not be loaded")?;
+            serde_json::from_reader(source_graph_file)
+                .context("Unable to load source graph")?;
+        let target_graph_file = File::open(target_graph_path)
+            .context("target file could not be loaded")?;
         let target_graph: FullGraph =
-            serde_json::from_reader(target_graph_file).context("Unable to load target graph")?;
+            serde_json::from_reader(target_graph_file)
+                .context("Unable to load target graph")?;
 
         let hnsw_root_directory =
             target_graph_dir_path.join(format!("{}.hnsw", &self.filter_field));
@@ -83,8 +88,9 @@ impl WeightsCommand {
             target_graph_dir_path,
         )?;
 
-        let source_vectors = Vectors::load(source_graph_dir_path, &self.filter_field)
-            .context("Unable to load vector file")?;
+        let source_vectors =
+            Vectors::load(source_graph_dir_path, &self.filter_field)
+                .context("Unable to load vector file")?;
 
         let target_field_graph = target_graph
             .get(&self.filter_field)
@@ -107,50 +113,62 @@ impl WeightsCommand {
         });
          */
 
-        let candidates_for_compare: Vec<(Vec<u32>, Vec<u32>)> = if let Some(non_matches_file) =
-            self.non_matches_file.as_ref()
-        {
-            let source_id_map: HashMap<&str, u32> = source_graph
-                .id_graph()
-                .values
-                .iter()
-                .enumerate()
-                .map(|(i, s)| (s.as_str(), i as u32))
-                .collect();
-            let target_id_map: HashMap<&str, u32> = target_graph
-                .id_graph()
-                .values
-                .iter()
-                .enumerate()
-                .map(|(i, s)| (s.as_str(), i as u32))
-                .collect();
+        let candidates_for_compare: Vec<(Vec<u32>, Vec<u32>)> =
+            if let Some(non_matches_file) = self.non_matches_file.as_ref() {
+                let source_id_map: HashMap<&str, u32> = source_graph
+                    .id_graph()
+                    .values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| (s.as_str(), i as u32))
+                    .collect();
+                let target_id_map: HashMap<&str, u32> = target_graph
+                    .id_graph()
+                    .values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| (s.as_str(), i as u32))
+                    .collect();
 
-            let matches_file =
-                File::open(&self.answers_file).context("Unable to open answer file")?;
-            let mut matches_rdr = csv::Reader::from_reader(matches_file);
+                let matches_file = File::open(&self.answers_file)
+                    .context("Unable to open answer file")?;
+                let mut matches_rdr = csv::Reader::from_reader(matches_file);
 
-            let non_matches_file =
-                File::open(non_matches_file).context("Unable to open non_matches file")?;
-            let mut non_match_rdr = csv::Reader::from_reader(non_matches_file);
-            let mut candidates: Vec<(Vec<u32>, Vec<u32>)> = Vec::new();
+                let non_matches_file = File::open(non_matches_file)
+                    .context("Unable to open non_matches file")?;
+                let mut non_match_rdr =
+                    csv::Reader::from_reader(non_matches_file);
+                let mut candidates: Vec<(Vec<u32>, Vec<u32>)> = Vec::new();
 
-            for result in non_match_rdr.records().chain(matches_rdr.records()) {
-                let record = result.expect("Unable to parse csv field");
-                //eprintln!("record[0]: {}", &record[0]);
-                //eprintln!("record[1]: {}", &record[1]);
-                let source_id = source_id_map[&record[0]];
-                let target_id = target_id_map[&record[1]];
-                let source_record_ids = source_graph.id_graph().value_id_to_record_ids(source_id);
-                let target_record_ids = target_graph.id_graph().value_id_to_record_ids(target_id);
-                candidates.push((source_record_ids.to_vec(), target_record_ids.to_vec()));
-            }
-            candidates
-        } else {
-            // Source Value id is position, and results are target value ids.
-            let results: Vec<(Vec<u32>, Vec<u32>)> = source_vectors
-                .iter()
-                .map(|query_vec| {
-                    hnsw.search(Vector::Slice(query_vec), &SearchParams::default())
+                for result in
+                    non_match_rdr.records().chain(matches_rdr.records())
+                {
+                    let record = result.expect("Unable to parse csv field");
+                    //eprintln!("record[0]: {}", &record[0]);
+                    //eprintln!("record[1]: {}", &record[1]);
+                    let source_id = source_id_map[&record[0]];
+                    let target_id = target_id_map[&record[1]];
+                    let source_record_ids = source_graph
+                        .id_graph()
+                        .value_id_to_record_ids(source_id);
+                    let target_record_ids = target_graph
+                        .id_graph()
+                        .value_id_to_record_ids(target_id);
+                    candidates.push((
+                        source_record_ids.to_vec(),
+                        target_record_ids.to_vec(),
+                    ));
+                }
+                candidates
+            } else {
+                // Source Value id is position, and results are target value ids.
+                let results: Vec<(Vec<u32>, Vec<u32>)> = source_vectors
+                    .iter()
+                    .map(|query_vec| {
+                        hnsw.search(
+                            Vector::Slice(query_vec),
+                            &SearchParams::default(),
+                        )
                         .iter()
                         .filter_map(|(target_value_id, distance)| {
                             if distance < self.initial_threshold {
@@ -160,27 +178,33 @@ impl WeightsCommand {
                             }
                         })
                         .collect::<Vec<u32>>()
-                })
-                .enumerate()
-                .map(|(source_value_id, target_value_ids)| {
-                    let all_target_record_ids: Vec<u32> = target_value_ids
-                        .iter()
-                        .flat_map(|id| target_field_graph.value_id_to_record_ids(*id))
-                        .copied()
-                        .collect();
-                    let all_source_record_ids: Vec<u32> = source_field_graph
-                        .value_id_to_record_ids(source_value_id as u32)
-                        .to_vec();
-                    (all_source_record_ids, all_target_record_ids)
-                })
-                .collect();
-            results
-        };
+                    })
+                    .enumerate()
+                    .map(|(source_value_id, target_value_ids)| {
+                        let all_target_record_ids: Vec<u32> = target_value_ids
+                            .iter()
+                            .flat_map(|id| {
+                                target_field_graph.value_id_to_record_ids(*id)
+                            })
+                            .copied()
+                            .collect();
+                        let all_source_record_ids: Vec<u32> =
+                            source_field_graph
+                                .value_id_to_record_ids(source_value_id as u32)
+                                .to_vec();
+                        (all_source_record_ids, all_target_record_ids)
+                    })
+                    .collect();
+                results
+            };
 
-        let source_vecs: HashMap<String, Vectors> = source_graph.load_vecs(source_graph_dir_path);
-        let target_vecs: HashMap<String, Vectors> = target_graph.load_vecs(target_graph_dir_path);
+        let source_vecs: HashMap<String, Vectors> =
+            source_graph.load_vecs(source_graph_dir_path);
+        let target_vecs: HashMap<String, Vectors> =
+            target_graph.load_vecs(target_graph_dir_path);
 
-        let answers_file = File::open(&self.answers_file).context("Unable to open answers file")?;
+        let answers_file = File::open(&self.answers_file)
+            .context("Unable to open answers file")?;
         let mut rdr = csv::Reader::from_reader(answers_file);
         let mut answers: HashMap<String, Vec<String>> = HashMap::new();
         for result in rdr.records() {
@@ -188,23 +212,31 @@ impl WeightsCommand {
             if let Some(result) = answers.get_mut(&record[0]) {
                 result.push(record[1].to_string());
             } else {
-                answers.insert(record[0].to_string(), vec![record[1].to_string()]);
+                answers
+                    .insert(record[0].to_string(), vec![record[1].to_string()]);
             }
         }
 
-        let source_compare_graph = CompareGraph::new(&source_graph, source_vecs);
-        let target_compare_graph = CompareGraph::new(&target_graph, target_vecs);
+        let source_compare_graph =
+            CompareGraph::new(&source_graph, source_vecs);
+        let target_compare_graph =
+            CompareGraph::new(&target_graph, target_vecs);
         let proportion_for_test = 0.33;
         let comparison_fields = self.comparison_fields.to_vec();
-        let (feature_names, train_features, train_answers, test_features, test_answers) =
-            build_test_and_train(
-                proportion_for_test,
-                comparison_fields,
-                answers,
-                &source_compare_graph,
-                &target_compare_graph,
-                candidates_for_compare,
-            );
+        let (
+            feature_names,
+            train_features,
+            train_answers,
+            test_features,
+            test_answers,
+        ) = build_test_and_train(
+            proportion_for_test,
+            comparison_fields,
+            answers,
+            &source_compare_graph,
+            &target_compare_graph,
+            candidates_for_compare,
+        );
 
         // Define our cost function
         let cost = MatchClassifier {
@@ -213,7 +245,8 @@ impl WeightsCommand {
         };
         let field_width = self.comparison_fields.len();
         // The final value is the intercept (and not a weight) which we also want to learn!
-        let init_param: DVector<f32> = DVector::from(vec![1.0; field_width + 1]);
+        let init_param: DVector<f32> =
+            DVector::from(vec![1.0; field_width + 1]);
 
         let linesearch = MoreThuenteLineSearch::new().with_c(1e-4, 0.9)?;
 
@@ -237,7 +270,8 @@ impl WeightsCommand {
             eprintln!("{}", "Test data is too small to evaluate!".bold().red());
         } else {
             let y_hat_as_nalgebra = predict(&test_features, &betas);
-            let y_hat: Vec<f32> = y_hat_as_nalgebra.into_iter().copied().collect();
+            let y_hat: Vec<f32> =
+                y_hat_as_nalgebra.into_iter().copied().collect();
 
             let score = roc_auc_score(&y, &y_hat);
             eprintln!("ROC AUC {}", score);
@@ -246,7 +280,8 @@ impl WeightsCommand {
             .into_iter()
             .zip(betas.data.as_vec().iter().copied())
             .collect();
-        let weights_str = serde_json::to_string(&weights).context("Could not serialize weights")?;
+        let weights_str = serde_json::to_string(&weights)
+            .context("Could not serialize weights")?;
         eprintln!("{weights_str}");
         Ok(())
     }

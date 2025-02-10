@@ -1,5 +1,7 @@
 use crate::{
-    layer::{Layer, VectorComparator, VectorGrouper, VectorRecall, VectorSearcher},
+    layer::{
+        Layer, VectorComparator, VectorGrouper, VectorRecall, VectorSearcher,
+    },
     params::{BuildParams, OptimizationParams, SearchParams},
     ring_queue::OrderedRingQueue,
     vectors::Vector,
@@ -26,7 +28,10 @@ impl Hnsw {
     }
 
     #[allow(unused)]
-    fn with_temp_hnsw<R, F: Fn(&Hnsw) -> R>(layers: &mut Vec<Layer>, func: F) -> R {
+    fn with_temp_hnsw<R, F: Fn(&Hnsw) -> R>(
+        layers: &mut Vec<Layer>,
+        func: F,
+    ) -> R {
         let mut temp_layers = Vec::new();
         std::mem::swap(&mut temp_layers, layers);
         let hnsw = Hnsw::new(temp_layers);
@@ -44,7 +49,13 @@ impl Hnsw {
         sp: &SearchParams,
         comparator: &C,
     ) {
-        Hnsw::search_layers(&self.layers, query_vec, search_queue, sp, comparator);
+        Hnsw::search_layers(
+            &self.layers,
+            query_vec,
+            search_queue,
+            sp,
+            comparator,
+        );
     }
 
     fn search_layers<C: VectorComparator, L: AsRef<Layer>>(
@@ -57,9 +68,10 @@ impl Hnsw {
         let layer_count = layers.len();
         assert!(layer_count > 0);
         let bottom_layer_idx = layer_count - 1;
-        let largest_neighborhood = layers[bottom_layer_idx].as_ref().single_neighborhood_size();
-        let buffer_size =
-            largest_neighborhood * (sp.parallel_visit_count + sp.circulant_parameter_count);
+        let largest_neighborhood =
+            layers[bottom_layer_idx].as_ref().single_neighborhood_size();
+        let buffer_size = largest_neighborhood
+            * (sp.parallel_visit_count + sp.circulant_parameter_count);
         debug_assert!(buffer_size % C::vec_group_size() == 0);
         let mut ids = Vec::with_capacity(buffer_size);
         let mut priorities = Vec::with_capacity(buffer_size);
@@ -68,7 +80,8 @@ impl Hnsw {
             priorities.set_len(buffer_size);
         }
 
-        let mut uninitialized_visit_queue = OrderedRingQueue::new(sp.search_queue_len);
+        let mut uninitialized_visit_queue =
+            OrderedRingQueue::new(sp.search_queue_len);
 
         for layer in layers.iter() {
             layer.as_ref().closest_vectors(
@@ -92,19 +105,26 @@ impl Hnsw {
         // find initial distance from the 0th vec, which is our fixed start node
         let initial_distance = comparator.compare_vec_vector(0, query_vec);
 
-        let mut search_queue =
-            OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
+        let mut search_queue = OrderedRingQueue::new_with(
+            sp.search_queue_len,
+            &[0],
+            &[initial_distance],
+        );
         self.search(query_vec, &mut search_queue, sp, comparator);
 
         search_queue
     }
 
-    pub fn generate<C: VectorComparator>(bp: &BuildParams, comparator: &C) -> Self {
+    pub fn generate<C: VectorComparator>(
+        bp: &BuildParams,
+        comparator: &C,
+    ) -> Self {
         let num_vecs = comparator.num_vecs();
         eprintln!("num_vecs: {num_vecs}");
         assert!(num_vecs > bp.order);
         let mut layer_nodes = bp.order;
-        let zero_layer = Layer::build_perfect(layer_nodes, bp.neighborhood_size, comparator);
+        let zero_layer =
+            Layer::build_perfect(layer_nodes, bp.neighborhood_size, comparator);
         eprintln!("perfect first layer built");
         let mut layers = vec![zero_layer];
 
@@ -125,13 +145,19 @@ impl Hnsw {
                 layers: &layers,
                 sp: &bp.optimization_params.search_params,
             };
-            let mut new_layer = Layer::build_grouped(vec_count, single_neighborhood_size, &grouper);
+            let mut new_layer = Layer::build_grouped(
+                vec_count,
+                single_neighborhood_size,
+                &grouper,
+            );
 
-            let mut memoized_distances = new_layer.sort_neighborhoods(comparator);
+            let mut memoized_distances =
+                new_layer.sort_neighborhoods(comparator);
 
             // we are going to push the buffer in a second, so layers.len()+1
             {
-                let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
+                let mut optimizer =
+                    new_layer.get_optimizer(&mut memoized_distances);
                 eprintln!("symmetrizing layer {}", layers.len() + 1);
                 optimizer.symmetrize();
             }
@@ -143,7 +169,8 @@ impl Hnsw {
                 sp: &bp.optimization_params.search_params,
             };
             eprintln!("improving layer {}", layers.len());
-            let mut optimizer = new_layer.get_optimizer(&mut memoized_distances);
+            let mut optimizer =
+                new_layer.get_optimizer(&mut memoized_distances);
             optimizer.improve_all_neighbors(&grouper);
 
             *layers.last_mut().unwrap() = new_layer;
@@ -194,7 +221,8 @@ impl Hnsw {
         {
             optimizer.improve_all_neighbors(&searcher);
 
-            let new_recall = searcher.test_recall(proportion, 0x533D + layer_i as u64 + round);
+            let new_recall = searcher
+                .test_recall(proportion, 0x533D + layer_i as u64 + round);
             improvement = new_recall - recall;
             recall = new_recall;
             eprintln!("layer[{layer_i}]\n  Recall: {recall}\n  Improvement: {improvement}");
@@ -219,15 +247,18 @@ impl Hnsw {
         let ids: Vec<u32> = if proportion == 1.0 {
             (0..self.num_vectors() as u32).collect()
         } else {
-            (0..self.num_vectors() as u32)
-                .choose_multiple(&mut rng, (proportion * self.num_vectors() as f32) as usize)
+            (0..self.num_vectors() as u32).choose_multiple(
+                &mut rng,
+                (proportion * self.num_vectors() as f32) as usize,
+            )
         };
         let total = ids.len();
         eprintln!("searching for {total} vecs..");
         let found: f32 = ids
             .into_par_iter()
             .map(|i| {
-                let result = self.search_from_initial(Vector::Id(i), sp, comparator);
+                let result =
+                    self.search_from_initial(Vector::Id(i), sp, comparator);
                 let vi = result.first();
                 if vi.0 == i {
                     1.0_f32
@@ -267,12 +298,17 @@ pub struct SearchGrouper<'a, C, L: AsRef<Layer>> {
     layers: &'a [L],
 }
 
-impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorSearcher for SearchGrouper<'a, C, L> {
+impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorSearcher
+    for SearchGrouper<'a, C, L>
+{
     fn search(&self, vec: u32) -> OrderedRingQueue {
         let initial_distance = self.comparator.compare_vec_stored(0, vec);
 
-        let mut search_queue =
-            OrderedRingQueue::new_with(self.sp.search_queue_len, &[0], &[initial_distance]);
+        let mut search_queue = OrderedRingQueue::new_with(
+            self.sp.search_queue_len,
+            &[0],
+            &[initial_distance],
+        );
         Hnsw::search_layers(
             self.layers,
             Vector::Id(vec),
@@ -285,7 +321,9 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorSearcher for SearchG
     }
 }
 
-impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorRecall for SearchGrouper<'a, C, L> {
+impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorRecall
+    for SearchGrouper<'a, C, L>
+{
     fn test_recall(&self, proportion: f32, seed: u64) -> f32 {
         eprintln!("proportion: {proportion}");
         let mut rng = StdRng::seed_from_u64(seed);
@@ -298,7 +336,10 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorRecall for SearchGro
         let ids: Vec<u32> = if proportion == 1.0 {
             (0..num_vectors).collect()
         } else {
-            (0..num_vectors).choose_multiple(&mut rng, (proportion * num_vectors as f32) as usize)
+            (0..num_vectors).choose_multiple(
+                &mut rng,
+                (proportion * num_vectors as f32) as usize,
+            )
         };
         let total = ids.len();
         eprintln!("searching for {total} vecs..");
@@ -319,7 +360,9 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorRecall for SearchGro
     }
 }
 
-impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGrouper<'a, C, L> {
+impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper
+    for SearchGrouper<'a, C, L>
+{
     fn vector_group(&self, vec: u32) -> usize {
         let sp = SearchParams {
             parallel_visit_count: 4,
@@ -328,8 +371,11 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
             circulant_parameter_count: 0,
         };
         let initial_distance = self.comparator.compare_vec_stored(0, vec);
-        let mut search_queue =
-            OrderedRingQueue::new_with(sp.search_queue_len, &[0], &[initial_distance]);
+        let mut search_queue = OrderedRingQueue::new_with(
+            sp.search_queue_len,
+            &[0],
+            &[initial_distance],
+        );
         Hnsw::search_layers(
             self.layers,
             Vector::Id(vec),
@@ -350,7 +396,9 @@ impl<'a, C: VectorComparator, L: AsRef<Layer> + Sync> VectorGrouper for SearchGr
 mod tests {
 
     use crate::{
-        comparator::{CosineDistance1024, CosineDistance1536, EuclideanDistance8x8},
+        comparator::{
+            CosineDistance1024, CosineDistance1536, EuclideanDistance8x8,
+        },
         hnsw::Hnsw,
         test_util::{random_vectors, random_vectors_normalized},
     };

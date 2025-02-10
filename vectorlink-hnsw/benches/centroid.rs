@@ -1,5 +1,6 @@
 #![feature(test)]
 extern crate test;
+use test::Bencher;
 use vectorlink_hnsw::{
     comparator::EuclideanDistance8x8,
     hnsw::Hnsw,
@@ -7,7 +8,6 @@ use vectorlink_hnsw::{
     test_util::random_vectors,
     vectors::Vector,
 };
-use test::Bencher;
 
 #[bench]
 fn bench_centroid_construction(b: &mut Bencher) {

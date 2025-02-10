@@ -1,6 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:nixOS/nixpkgs?ref=nixpkgs-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs = {
@@ -9,24 +10,26 @@
     };
   };
 
-  outputs = { self, nixpkgs, rust-overlay }:(
-    let
-      supportedSystems = [ "aarch64-darwin" "x86_64-linux" "aarch64-linux" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-      nixpkgsFor = forAllSystems (system:
-        (import nixpkgs) {
+  outputs =
+    {
+      nixpkgs,
+      rust-overlay,
+      flake-utils,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = (import nixpkgs) {
           inherit system;
           overlays = [
             (import rust-overlay)
           ];
-        }
-      ); in
+        };
+      in
       {
-        devShells = forAllSystems (system :
-          let pkgs = nixpkgsFor.${system};in
-          {
-            default = pkgs.callPackage ./shell.nix {};
-          });
+        devShells.default = pkgs.callPackage ./shell.nix { };
+        formatter = pkgs.nixfmt-rfc-style;
       }
-  );
+    );
 }

@@ -15,7 +15,9 @@ pub trait Model {
     ) -> Result<(), anyhow::Error>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, ValueEnum,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum SupportedModel {
     OpenaiAda2,
@@ -41,7 +43,8 @@ impl EmbedderMetadata {
         strings: &[String],
         mut writer: W,
     ) -> Result<(), anyhow::Error> {
-        let required_capacity = self.model.embedding_byte_size() * strings.len();
+        let required_capacity =
+            self.model.embedding_byte_size() * strings.len();
         // TODO do not initialize
         let mut data = vec![0_u8; required_capacity];
 

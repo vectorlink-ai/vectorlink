@@ -28,9 +28,19 @@ fn main() -> io::Result<()> {
     let vectors = Vectors::load(&args.graph_directory, &args.field)?;
     // We need some logic switching on which vector dimension we are
     let mut hnsw: IndexConfiguration = if vectors.vector_byte_size() == 6144 {
-        Hnsw1536::generate(args.field.to_string(), vectors, &BuildParams::default()).into()
+        Hnsw1536::generate(
+            args.field.to_string(),
+            vectors,
+            &BuildParams::default(),
+        )
+        .into()
     } else if vectors.vector_byte_size() == 4096 {
-        Hnsw1024::generate(args.field.to_string(), vectors, &BuildParams::default()).into()
+        Hnsw1024::generate(
+            args.field.to_string(),
+            vectors,
+            &BuildParams::default(),
+        )
+        .into()
     } else {
         panic!("Unknown vector byte size!");
     };

@@ -9,6 +9,7 @@ pub mod layer;
 pub mod memoize;
 pub mod optimize;
 pub mod params;
+pub mod peaks;
 pub mod pq;
 pub mod queue_view;
 pub mod ring_queue;
@@ -17,7 +18,6 @@ pub mod test_util;
 pub mod util;
 pub mod vecmath;
 pub mod vectors;
-pub mod peaks;
 
 #[cfg(test)]
 mod tests {}

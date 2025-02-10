@@ -1,9 +1,9 @@
 #![feature(test)]
 
 extern crate test;
-use vectorlink_hnsw::vecmath;
 use rand::{distributions::Uniform, rngs::StdRng, Rng, SeedableRng};
 use test::Bencher;
+use vectorlink_hnsw::vecmath;
 
 #[bench]
 fn bench_dot_product_8(b: &mut Bencher) {

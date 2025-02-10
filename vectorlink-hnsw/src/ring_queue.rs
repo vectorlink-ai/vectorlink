@@ -42,7 +42,11 @@ impl<'a> RingQueue<'a> {
         );
         assert!(len <= capacity);
     }
-    pub fn new_with(capacity: usize, ids_slice: &[u32], priorities_slice: &[f32]) -> Self {
+    pub fn new_with(
+        capacity: usize,
+        ids_slice: &[u32],
+        priorities_slice: &[f32],
+    ) -> Self {
         assert_eq!(ids_slice.len(), priorities_slice.len());
         Self::assert_capacity_len(capacity, ids_slice.len());
         let len = ids_slice.len() as u32;
@@ -321,10 +325,15 @@ impl<'a> OrderedRingQueue<'a> {
     }
     pub fn new_with(capacity: usize, ids: &[u32], priorities: &[f32]) -> Self {
         assert_eq!(ids.len(), priorities.len());
-        Self::assert_ordered(ids.iter().copied().zip(priorities.iter().copied()));
+        Self::assert_ordered(
+            ids.iter().copied().zip(priorities.iter().copied()),
+        );
         Self(RingQueue::new_with(capacity, ids, priorities))
     }
-    pub fn new_with_mut_slices(ids_slice: &'a mut [u32], priorities_slice: &'a mut [f32]) -> Self {
+    pub fn new_with_mut_slices(
+        ids_slice: &'a mut [u32],
+        priorities_slice: &'a mut [f32],
+    ) -> Self {
         // assume sorted
         let len = ids_slice
             .iter()
@@ -446,7 +455,11 @@ impl<'a> OrderedRingQueue<'a> {
         self.insertion_point_from(pair, 0)
     }
 
-    fn insertion_point_from(&self, pair: (u32, f32), start_from: usize) -> usize {
+    fn insertion_point_from(
+        &self,
+        pair: (u32, f32),
+        start_from: usize,
+    ) -> usize {
         let l = self.len();
         if l == 0 {
             return 0;
@@ -690,7 +703,11 @@ mod tests {
 
     #[test]
     fn insertion_points() {
-        let queue = OrderedRingQueue::new_with(10, &[2, 4, 6, 8, 10], &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let queue = OrderedRingQueue::new_with(
+            10,
+            &[2, 4, 6, 8, 10],
+            &[1.0, 2.0, 3.0, 4.0, 5.0],
+        );
 
         // below first
         let idx = queue.insertion_point((5, 0.0));
@@ -720,7 +737,11 @@ mod tests {
 
     #[test]
     fn insertion_point_identical() {
-        let queue = OrderedRingQueue::new_with(5, &[2, 4, 6, 8, 10], &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let queue = OrderedRingQueue::new_with(
+            5,
+            &[2, 4, 6, 8, 10],
+            &[1.0, 2.0, 3.0, 4.0, 5.0],
+        );
 
         // priority over boundary
         let idx = queue.insertion_point((2, 1.0));
@@ -730,7 +751,11 @@ mod tests {
 
     #[test]
     fn insertion_wrapped_points() {
-        let mut queue = RingQueue::new_with(5, &[2, 4, 6, 8, 10], &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let mut queue = RingQueue::new_with(
+            5,
+            &[2, 4, 6, 8, 10],
+            &[1.0, 2.0, 3.0, 4.0, 5.0],
+        );
 
         assert!(queue.is_full());
 
@@ -762,7 +787,11 @@ mod tests {
 
     #[test]
     fn test_insert_at() {
-        let mut queue = RingQueue::new_with(5, &[2, 4, 6, 8, 10], &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let mut queue = RingQueue::new_with(
+            5,
+            &[2, 4, 6, 8, 10],
+            &[1.0, 2.0, 3.0, 4.0, 5.0],
+        );
 
         let p = (3, 1.5);
         queue.insert_at(1, p);
@@ -773,13 +802,20 @@ mod tests {
 
     #[test]
     fn merge_no_wrap() {
-        let mut queue =
-            OrderedRingQueue::new_with(5, &[2, 4, 6, 8, 10], &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let mut queue = OrderedRingQueue::new_with(
+            5,
+            &[2, 4, 6, 8, 10],
+            &[1.0, 2.0, 3.0, 4.0, 5.0],
+        );
 
         let i = queue.insertion_point((4, 2.0));
         eprintln!("and we are to insert the duplicate at: {i}");
 
-        let queue1 = OrderedRingQueue::new_with(5, &[4, 8, 9, 11], &[2.0, 4.0, 4.5, 5.5]);
+        let queue1 = OrderedRingQueue::new_with(
+            5,
+            &[4, 8, 9, 11],
+            &[2.0, 4.0, 4.5, 5.5],
+        );
 
         queue.merge(&queue1);
 
@@ -791,7 +827,11 @@ mod tests {
 
     #[test]
     fn test_pop_first_n() {
-        let mut queue = RingQueue::new_with(5, &[2, 4, 6, 8, 10], &[1.0, 2.0, 3.0, 4.0, 5.0]);
+        let mut queue = RingQueue::new_with(
+            5,
+            &[2, 4, 6, 8, 10],
+            &[1.0, 2.0, 3.0, 4.0, 5.0],
+        );
 
         let (results, actual_pops) = queue.pop_first_n(3);
         assert_eq!(actual_pops, 3);
@@ -804,8 +844,11 @@ mod tests {
     #[test]
     fn double_insert() {
         let mut visit_queue = OrderedRingQueue::new(5);
-        let mut candidates_queue =
-            OrderedRingQueue::new_with(5, &[2, 4, 6, 8, 10], &[2.0, 4.0, 6.0, 8.0, 10.0]);
+        let mut candidates_queue = OrderedRingQueue::new_with(
+            5,
+            &[2, 4, 6, 8, 10],
+            &[2.0, 4.0, 6.0, 8.0, 10.0],
+        );
         let ids = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
         let priorities: Vec<_> = ids.iter().map(|x| *x as f32).collect();
         let seen = Bitmap::new(20);

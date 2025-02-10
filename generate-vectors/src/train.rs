@@ -1,9 +1,9 @@
 use crate::graph::CompareGraph;
 use argmin::core::{CostFunction, Error, Gradient};
-use vectorlink_hnsw::layer::VectorComparator;
-use vectorlink_hnsw::{comparator::CosineDistance1536, vectors::Vectors};
 use nalgebra::{DMatrix, DVector};
 use std::collections::HashMap;
+use vectorlink_hnsw::layer::VectorComparator;
+use vectorlink_hnsw::{comparator::CosineDistance1536, vectors::Vectors};
 
 pub fn sigmoid(z: &DVector<f32>) -> DVector<f32> {
     z.map(|x| 1.0 / (1.0 + (-x).exp()))
@@ -103,8 +103,10 @@ pub fn build_test_and_train<'a>(
                 } else {
                     test_features.push(distances);
                 }
-                let source_id = source_compare_graph.graph.record_id_field_value(*source);
-                let target_id = target_compare_graph.graph.record_id_field_value(*target);
+                let source_id =
+                    source_compare_graph.graph.record_id_field_value(*source);
+                let target_id =
+                    target_compare_graph.graph.record_id_field_value(*target);
                 if let Some(targets) = all_answers.get(source_id) {
                     if targets.iter().any(|s| s == target_id) {
                         if training {
@@ -128,7 +130,8 @@ pub fn build_test_and_train<'a>(
     let train_count = train_answers.len();
     let test_count = test_answers.len();
     let feature_len = comparison_fields.len() + 1; // includes intercept dummy
-    let mut feature_names: Vec<String> = weights.iter().map(|(s, _)| s.to_string()).collect();
+    let mut feature_names: Vec<String> =
+        weights.iter().map(|(s, _)| s.to_string()).collect();
     feature_names.push("__INTERCEPT__".to_string());
     (
         feature_names,
@@ -170,13 +173,15 @@ pub fn compare_record_distances(
             .get(field)
             .expect("field missing on source graph")
             .record_id_to_value_id(target_record);
-        if let (Some(source_vector_id), Some(target_vector_id)) = (source_value_id, target_value_id)
+        if let (Some(source_vector_id), Some(target_vector_id)) =
+            (source_value_id, target_value_id)
         {
             let source_vec = &source.vecs[field][source_vector_id as usize];
             let target_vec = &target.vecs[field][target_vector_id as usize];
             let dummy = Vectors::empty(6144);
             let comparator = CosineDistance1536::new(&dummy);
-            let distance = comparator.compare_vec_unstored(source_vec, target_vec);
+            let distance =
+                comparator.compare_vec_unstored(source_vec, target_vec);
             results.push(distance);
         } else {
             results.push(0.5); // NOTE: This may be too unprincipled

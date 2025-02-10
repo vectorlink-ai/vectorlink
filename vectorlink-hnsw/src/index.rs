@@ -29,14 +29,24 @@ pub enum DispatchError {
 pub trait Index {
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue;
     fn num_vectors(&self) -> usize;
-    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32;
+    fn test_recall_with_proportion(
+        &self,
+        proportion: f32,
+        sp: &SearchParams,
+        seed: u64,
+    ) -> f32;
     fn optimize_and_save<P: AsRef<Path>>(
         &mut self,
         root: P,
         op: &OptimizationParams,
     ) -> Result<f32, io::Error>;
     fn optimize(&mut self, op: &OptimizationParams) -> f32;
-    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P);
+    fn knn_into_file<P: AsRef<Path>>(
+        &self,
+        k: usize,
+        sp: SearchParams,
+        path: P,
+    );
     fn reconstruction_statistics(&self) -> Result<(f32, f32), DispatchError> {
         Err(DispatchError::FeatureDoesNotExist)
     }
@@ -46,7 +56,10 @@ pub trait Index {
         self.test_recall_with_proportion(proportion, sp, seed)
     }
 
-    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)>;
+    fn find_distance_transitions(
+        &self,
+        fpp: FindPeaksParams,
+    ) -> Vec<(f32, Peak<f32>)>;
 }
 
 pub trait NewIndex: Index {
@@ -91,14 +104,20 @@ impl Index for Pq1024x8 {
     }
     fn search(&self, query_vec: Vector, sp: &SearchParams) -> OrderedRingQueue {
         let Pq1024x8 { pq, .. } = self;
-        let quantized_comparator =
-            NewMemoizedComparator128::new(pq.quantized_vectors(), pq.memoized_distances());
+        let quantized_comparator = NewMemoizedComparator128::new(
+            pq.quantized_vectors(),
+            pq.memoized_distances(),
+        );
         match query_vec {
             Vector::Slice(slice) => {
                 let mut quantized = vec![0_u8; 256];
-                let centroid_comparator = EuclideanDistance8x8::new(pq.centroids());
-                pq.quantizer()
-                    .quantize(slice, &centroid_comparator, &mut quantized);
+                let centroid_comparator =
+                    EuclideanDistance8x8::new(pq.centroids());
+                pq.quantizer().quantize(
+                    slice,
+                    &centroid_comparator,
+                    &mut quantized,
+                );
 
                 pq.search_from_initial_quantized(
                     Vector::Slice(&quantized),
@@ -106,29 +125,41 @@ impl Index for Pq1024x8 {
                     &quantized_comparator,
                 )
             }
-            Vector::Id(id) => {
-                pq.search_from_initial_quantized(Vector::Id(id), sp, &quantized_comparator)
-            }
+            Vector::Id(id) => pq.search_from_initial_quantized(
+                Vector::Id(id),
+                sp,
+                &quantized_comparator,
+            ),
         }
     }
 
-    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
+    fn test_recall_with_proportion(
+        &self,
+        proportion: f32,
+        sp: &SearchParams,
+        seed: u64,
+    ) -> f32 {
         let Pq1024x8 { pq, .. } = self;
-        let quantized_comparator =
-            NewMemoizedComparator128::new(pq.quantized_vectors(), pq.memoized_distances());
+        let quantized_comparator = NewMemoizedComparator128::new(
+            pq.quantized_vectors(),
+            pq.memoized_distances(),
+        );
         self.pq
             .test_recall(proportion, sp, &quantized_comparator, seed)
     }
 
     fn optimize(&mut self, op: &OptimizationParams) -> f32 {
-        let quantized_comparator =
-            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+        let quantized_comparator = NewMemoizedComparator128::new(
+            &self.pq.quantized_vectors,
+            &self.pq.memoized_distances,
+        );
         let mut recall = 0.0;
         for i in 0..self.pq.quantized_hnsw.layers().len() {
-            let layer_recall = self
-                .pq
-                .quantized_hnsw
-                .optimize_layer(i, op, &quantized_comparator);
+            let layer_recall = self.pq.quantized_hnsw.optimize_layer(
+                i,
+                op,
+                &quantized_comparator,
+            );
             recall = layer_recall;
             eprintln!("saving layer [{i}] with recall {recall}");
             //self.store_hnsw(&root)?;
@@ -142,14 +173,17 @@ impl Index for Pq1024x8 {
         _root: P,
         op: &OptimizationParams,
     ) -> Result<f32, io::Error> {
-        let quantized_comparator =
-            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+        let quantized_comparator = NewMemoizedComparator128::new(
+            &self.pq.quantized_vectors,
+            &self.pq.memoized_distances,
+        );
         let mut recall = 0.0;
         for i in 0..self.pq.quantized_hnsw.layers().len() {
-            let layer_recall = self
-                .pq
-                .quantized_hnsw
-                .optimize_layer(i, op, &quantized_comparator);
+            let layer_recall = self.pq.quantized_hnsw.optimize_layer(
+                i,
+                op,
+                &quantized_comparator,
+            );
             recall = layer_recall;
             eprintln!("saving layer [{i}] with recall {recall}");
             //self.store_hnsw(&root)?;
@@ -158,25 +192,41 @@ impl Index for Pq1024x8 {
         Ok(recall)
     }
 
-    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P) {
-        let quantized_comparator =
-            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+    fn knn_into_file<P: AsRef<Path>>(
+        &self,
+        k: usize,
+        sp: SearchParams,
+        path: P,
+    ) {
+        let quantized_comparator = NewMemoizedComparator128::new(
+            &self.pq.quantized_vectors,
+            &self.pq.memoized_distances,
+        );
         let file = File::create(path).unwrap();
         let record_size = k * (size_of::<(u32, f32)>());
         self.pq
             .quantized_hnsw
             .knn(k, sp, quantized_comparator)
             .for_each(|(i, pairs)| {
-                let raw_data =
-                    unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+                let raw_data = unsafe {
+                    std::slice::from_raw_parts(
+                        pairs.as_ptr() as *const u8,
+                        record_size,
+                    )
+                };
                 file.write_all_at(raw_data, (i as usize * record_size) as u64)
                     .unwrap()
             });
     }
 
-    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)> {
-        let quantized_comparator =
-            NewMemoizedComparator128::new(&self.pq.quantized_vectors, &self.pq.memoized_distances);
+    fn find_distance_transitions(
+        &self,
+        fpp: FindPeaksParams,
+    ) -> Vec<(f32, Peak<f32>)> {
+        let quantized_comparator = NewMemoizedComparator128::new(
+            &self.pq.quantized_vectors,
+            &self.pq.memoized_distances,
+        );
         self.pq
             .quantized_hnsw
             .find_distance_transitions(fpp, quantized_comparator)
@@ -222,7 +272,12 @@ impl Index for Hnsw1024 {
         hnsw.search_from_initial(query_vec, sp, &comparator)
     }
 
-    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
+    fn test_recall_with_proportion(
+        &self,
+        proportion: f32,
+        sp: &SearchParams,
+        seed: u64,
+    ) -> f32 {
         let Hnsw1024 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1024::new(vectors);
         hnsw.test_recall(proportion, sp, &comparator, seed)
@@ -247,7 +302,12 @@ impl Index for Hnsw1024 {
         self.hnsw.optimize(op, &comparator)
     }
 
-    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P) {
+    fn knn_into_file<P: AsRef<Path>>(
+        &self,
+        k: usize,
+        sp: SearchParams,
+        path: P,
+    ) {
         let comparator = CosineDistance1024::new(&self.vectors);
         let file = OpenOptions::new()
             .create(true)
@@ -260,15 +320,23 @@ impl Index for Hnsw1024 {
             pairs.resize(k, (u32::MAX, f32::MAX));
             let pairs_len = pairs.len();
             assert_eq!(pairs_len, k);
-            let raw_data: &[u8] =
-                unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+            let raw_data: &[u8] = unsafe {
+                std::slice::from_raw_parts(
+                    pairs.as_ptr() as *const u8,
+                    record_size,
+                )
+            };
             let address = (i as usize * record_size) as u64;
-            file.write_all_at(raw_data, address)
-                .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
+            file.write_all_at(raw_data, address).unwrap_or_else(|e| {
+                panic!("writing to address: {address}: {e}")
+            })
         });
     }
 
-    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)> {
+    fn find_distance_transitions(
+        &self,
+        fpp: FindPeaksParams,
+    ) -> Vec<(f32, Peak<f32>)> {
         let comparator = CosineDistance1024::new(&self.vectors);
         self.hnsw.find_distance_transitions(fpp, comparator)
     }
@@ -313,7 +381,12 @@ impl Index for Hnsw1536 {
         hnsw.search_from_initial(query_vec, sp, &comparator)
     }
 
-    fn test_recall_with_proportion(&self, proportion: f32, sp: &SearchParams, seed: u64) -> f32 {
+    fn test_recall_with_proportion(
+        &self,
+        proportion: f32,
+        sp: &SearchParams,
+        seed: u64,
+    ) -> f32 {
         let Hnsw1536 { hnsw, vectors, .. } = self;
         let comparator = CosineDistance1536::new(vectors);
         hnsw.test_recall(proportion, sp, &comparator, seed)
@@ -338,7 +411,12 @@ impl Index for Hnsw1536 {
         self.hnsw.optimize(op, &comparator)
     }
 
-    fn knn_into_file<P: AsRef<Path>>(&self, k: usize, sp: SearchParams, path: P) {
+    fn knn_into_file<P: AsRef<Path>>(
+        &self,
+        k: usize,
+        sp: SearchParams,
+        path: P,
+    ) {
         let comparator = CosineDistance1536::new(&self.vectors);
         let file = OpenOptions::new()
             .create(true)
@@ -351,22 +429,33 @@ impl Index for Hnsw1536 {
             pairs.resize(k, (u32::MAX, f32::MAX));
             let pairs_len = pairs.len();
             assert_eq!(pairs_len, k);
-            let raw_data: &[u8] =
-                unsafe { std::slice::from_raw_parts(pairs.as_ptr() as *const u8, record_size) };
+            let raw_data: &[u8] = unsafe {
+                std::slice::from_raw_parts(
+                    pairs.as_ptr() as *const u8,
+                    record_size,
+                )
+            };
             let address = (i as usize * record_size) as u64;
-            file.write_all_at(raw_data, address)
-                .unwrap_or_else(|e| panic!("writing to address: {address}: {e}"))
+            file.write_all_at(raw_data, address).unwrap_or_else(|e| {
+                panic!("writing to address: {address}: {e}")
+            })
         });
     }
 
-    fn find_distance_transitions(&self, fpp: FindPeaksParams) -> Vec<(f32, Peak<f32>)> {
+    fn find_distance_transitions(
+        &self,
+        fpp: FindPeaksParams,
+    ) -> Vec<(f32, Peak<f32>)> {
         let comparator = CosineDistance1536::new(&self.vectors);
         self.hnsw.find_distance_transitions(fpp, comparator)
     }
 }
 
 impl IndexConfiguration {
-    pub fn knn(&self, k: usize) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + '_ {
+    pub fn knn(
+        &self,
+        k: usize,
+    ) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + '_ {
         match self {
             IndexConfiguration::Hnsw1024(index) => {
                 let comparator = CosineDistance1024::new(&index.vectors);

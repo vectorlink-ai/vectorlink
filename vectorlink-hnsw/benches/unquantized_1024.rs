@@ -1,5 +1,6 @@
 #![feature(test)]
 extern crate test;
+use test::Bencher;
 use vectorlink_hnsw::{
     comparator::CosineDistance1024,
     hnsw::Hnsw,
@@ -7,7 +8,6 @@ use vectorlink_hnsw::{
     test_util::random_vectors,
     vectors::Vector,
 };
-use test::Bencher;
 
 #[bench]
 fn bench_unquantized_1024_construction(b: &mut Bencher) {

@@ -1,6 +1,7 @@
 #![feature(test)]
 
 extern crate test;
+use test::Bencher;
 use vectorlink_hnsw::{
     comparator::{NewEuclideanDistance8x8, VectorComparatorConstructor},
     hnsw::Hnsw,
@@ -8,7 +9,6 @@ use vectorlink_hnsw::{
     pq::{centroid_finder, Quantizer, VectorRangeIndexableForVectors},
     test_util::random_vectors,
 };
-use test::Bencher;
 
 #[bench]
 fn bench_quantization(b: &mut Bencher) {
@@ -31,11 +31,17 @@ fn bench_quantization(b: &mut Bencher) {
         0xD335,
     );
 
-    let centroid_comparator = NewEuclideanDistance8x8::new_from_vecs(&centroids);
-    let centroid_hnsw = Hnsw::generate(&centroid_build_params, &centroid_comparator);
+    let centroid_comparator =
+        NewEuclideanDistance8x8::new_from_vecs(&centroids);
+    let centroid_hnsw =
+        Hnsw::generate(&centroid_build_params, &centroid_comparator);
     let quantizer = Quantizer::new(centroid_hnsw, quantizer_search_params);
     b.iter(move || {
         let vector_stream = vectors.iter();
-        quantizer.quantize_all(vectors.num_vecs(), vector_stream, &centroid_comparator)
+        quantizer.quantize_all(
+            vectors.num_vecs(),
+            vector_stream,
+            &centroid_comparator,
+        )
     });
 }

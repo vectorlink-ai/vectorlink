@@ -9,7 +9,9 @@ use bytes::Bytes;
 use clap::ValueEnum;
 use lazy_static::lazy_static;
 use regex::Regex;
-use reqwest::{header::HeaderValue, Body, Client, Method, Request, StatusCode, Url};
+use reqwest::{
+    header::HeaderValue, Body, Client, Method, Request, StatusCode, Url,
+};
 use serde::{
     de::{SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -86,7 +88,10 @@ struct SingleEmbeddingVisitor;
 impl<'de> Visitor<'de> for SingleEmbeddingVisitor {
     type Value = OpenAIStandardEmbedding;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
         write!(formatter, "a list of 1536 floats")
     }
 
@@ -160,7 +165,10 @@ impl RateLimiter {
         }
     }
 
-    async fn wakeup_existing(mut budget: usize, waiters: &mut VecDeque<(usize, Arc<Notify>)>) {
+    async fn wakeup_existing(
+        mut budget: usize,
+        waiters: &mut VecDeque<(usize, Arc<Notify>)>,
+    ) {
         while waiters
             .front()
             .map(|(requested_budget, _)| *requested_budget < budget)
@@ -178,17 +186,25 @@ impl RateLimiter {
             let mut budget = self.budget.lock().await;
             if requested_budget <= *budget {
                 *budget -= requested_budget;
-                eprintln!("requested {}. budget now {}", requested_budget, *budget);
+                eprintln!(
+                    "requested {}. budget now {}",
+                    requested_budget, *budget
+                );
                 let inner_budget = self.budget.clone();
                 let inner_waiters = self.waiters.clone();
                 tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(60))
+                        .await;
                     let mut budget = inner_budget.lock().await;
                     *budget += requested_budget;
                     let budget_copy = *budget;
                     std::mem::drop(budget);
                     eprintln!("minute passed. budget now {}", budget_copy);
-                    Self::wakeup_existing(budget_copy, &mut *inner_waiters.lock().await).await;
+                    Self::wakeup_existing(
+                        budget_copy,
+                        &mut *inner_waiters.lock().await,
+                    )
+                    .await;
                 });
                 return;
             } else {
@@ -240,7 +256,8 @@ pub async fn embeddings_for(
     const CHUNK_SIZE: usize = 2048;
 
     lazy_static! {
-        static ref ENDPOINT: Url = Url::parse("https://api.openai.com/v1/embeddings").unwrap();
+        static ref ENDPOINT: Url =
+            Url::parse("https://api.openai.com/v1/embeddings").unwrap();
         static ref CLIENT: Client = Client::new();
         static ref LIMITERS: Arc<RwLock<HashMap<String, RateLimiter>>> =
             Arc::new(RwLock::new(HashMap::new()));
@@ -263,7 +280,8 @@ pub async fn embeddings_for(
         //eprintln!("{strings:?}");
         assert_eq!(None, strings.iter().position(|s| s.is_empty()), "die");
 
-        let token_lists: Vec<_> = strings.iter().map(|s| truncated_tokens_for(s)).collect();
+        let token_lists: Vec<_> =
+            strings.iter().map(|s| truncated_tokens_for(s)).collect();
 
         limiter
             .budget_tokens(token_lists.iter().map(|ts| ts.len()).sum())
@@ -280,7 +298,10 @@ pub async fn embeddings_for(
         loop {
             let mut req = Request::new(Method::POST, ENDPOINT.clone());
             let headers = req.headers_mut();
-            headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+            headers.insert(
+                "Content-Type",
+                HeaderValue::from_static("application/json"),
+            );
             headers.insert(
                 "Authorization",
                 HeaderValue::from_str(&format!("Bearer {api_key}")).unwrap(),
@@ -322,7 +343,8 @@ pub async fn embeddings_for(
             match serde_json::from_slice(&response_bytes) {
                 Ok(r) => response = r,
                 Err(e) => {
-                    let body = String::from_utf8_lossy(&response_bytes).to_string();
+                    let body =
+                        String::from_utf8_lossy(&response_bytes).to_string();
                     return Err(EmbeddingError::BadJson(e, body));
                 }
             }
@@ -343,14 +365,19 @@ pub async fn embeddings_for_output(
     output: &mut [u8],
 ) -> Result<(), EmbeddingError> {
     assert_eq!(output.len(), 1536 * 4 * strings.len());
-    let (embeddings, _failure_count) = embeddings_for(api_key, strings, model).await?;
+    let (embeddings, _failure_count) =
+        embeddings_for(api_key, strings, model).await?;
 
     for (ix, embedding) in embeddings.into_iter().enumerate() {
         let slice_cast = unsafe {
-            std::slice::from_raw_parts(embedding.as_ptr() as *const u8, OPENAI_EMBEDDING_LENGTH)
+            std::slice::from_raw_parts(
+                embedding.as_ptr() as *const u8,
+                OPENAI_EMBEDDING_LENGTH,
+            )
         };
         let offset = ix * OPENAI_EMBEDDING_LENGTH;
-        output[offset..offset + OPENAI_EMBEDDING_LENGTH].copy_from_slice(slice_cast);
+        output[offset..offset + OPENAI_EMBEDDING_LENGTH]
+            .copy_from_slice(slice_cast);
     }
 
     Ok(())
@@ -369,10 +396,15 @@ impl OpenAIDecider {
         }
     }
 
-    pub async fn decide(&self, e1: &str, e2: &str) -> Result<bool, anyhow::Error> {
+    pub async fn decide(
+        &self,
+        e1: &str,
+        e2: &str,
+    ) -> Result<bool, anyhow::Error> {
         lazy_static! {
             static ref ENDPOINT: Url =
-                Url::parse("https://api.openai.com/v1/chat/completions").unwrap();
+                Url::parse("https://api.openai.com/v1/chat/completions")
+                    .unwrap();
             static ref CLIENT: Client = Client::new();
             static ref YES_MATCHER: Regex = Regex::new(r"yes").unwrap();
             static ref NO_MATCHER: Regex = Regex::new(r"no").unwrap();
@@ -399,7 +431,10 @@ Tell me whether the following two records are referring to the same entity or a 
         };
         let mut req = Request::new(Method::POST, ENDPOINT.clone());
         let headers = req.headers_mut();
-        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+        headers.insert(
+            "Content-Type",
+            HeaderValue::from_static("application/json"),
+        );
         headers.insert(
             "Authorization",
             HeaderValue::from_str(&format!("Bearer {}", self.api_key)).unwrap(),
@@ -408,10 +443,12 @@ Tell me whether the following two records are referring to the same entity or a 
         let body: Body = body_vec.into();
         *req.body_mut() = Some(body);
 
-        let (_status, bytes) = execute_request_and_get_bytes(&CLIENT, req).await?;
+        let (_status, bytes) =
+            execute_request_and_get_bytes(&CLIENT, req).await?;
 
         let response: PartialCompletionResponse =
-            serde_json::from_slice(&bytes).context("could not parse openai completion response")?;
+            serde_json::from_slice(&bytes)
+                .context("could not parse openai completion response")?;
 
         let message = &response.choices[0].message;
         let last_line = message.content.lines().last().unwrap().to_lowercase();

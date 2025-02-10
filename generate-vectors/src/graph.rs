@@ -2,8 +2,8 @@ use std::{collections::HashMap, path::Path};
 
 use crate::templates::ID_FIELD_NAME;
 use either::Either;
-use vectorlink_hnsw::vectors::Vectors;
 use serde::{Deserialize, Serialize};
+use vectorlink_hnsw::vectors::Vectors;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FullGraph {
@@ -38,15 +38,19 @@ impl FullGraph {
         self.id_graph().values.len()
     }
 
-    pub fn load_vecs<P: AsRef<Path>>(&self, vector_path: P) -> HashMap<String, Vectors> {
+    pub fn load_vecs<P: AsRef<Path>>(
+        &self,
+        vector_path: P,
+    ) -> HashMap<String, Vectors> {
         self.fields()
             .iter()
             .filter(|name| **name != ID_FIELD_NAME)
             .map(|name| {
                 (
                     name.to_string(),
-                    Vectors::load(&vector_path, name)
-                        .unwrap_or_else(|_| panic!("Unable to load vector file for {name}")),
+                    Vectors::load(&vector_path, name).unwrap_or_else(|_| {
+                        panic!("Unable to load vector file for {name}")
+                    }),
                 )
             })
             .collect()
@@ -62,7 +66,8 @@ pub struct Graph {
 
 impl Graph {
     pub fn new<'a, I: Iterator<Item = &'a str>>(iter: I) -> Self {
-        let mut pairs: Vec<(u32, &str)> = iter.enumerate().map(|(i, s)| (i as u32, s)).collect();
+        let mut pairs: Vec<(u32, &str)> =
+            iter.enumerate().map(|(i, s)| (i as u32, s)).collect();
         // ensure ordering is random
         pairs.sort_by(|elt1, elt2| {
             gxhash::gxhash64(elt1.1.as_bytes(), 0x533D)
@@ -90,9 +95,9 @@ impl Graph {
         let mut value_to_record: HashMap<u32, Vec<u32>> = HashMap::new();
         for (&record_id, &value_id) in record_to_value.iter() {
             match value_to_record.entry(value_id) {
-                std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
-                    occupied_entry.get_mut().push(record_id)
-                }
+                std::collections::hash_map::Entry::Occupied(
+                    mut occupied_entry,
+                ) => occupied_entry.get_mut().push(record_id),
                 std::collections::hash_map::Entry::Vacant(vacant_entry) => {
                     vacant_entry.insert(vec![record_id]);
                 }

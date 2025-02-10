@@ -1,5 +1,3 @@
-#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
-use core::arch::x86_64::{__m128i, __m256};
 use std::simd::{
     cmp::{SimdPartialEq, SimdPartialOrd},
     f32x8, f64x8, masksizex8,
@@ -38,7 +36,8 @@ pub fn indexes_to_offsets(n: usize, i: usizex8, j: usizex8) -> usizex8 {
     let i_f64: f64x8 = i.cast();
     let j_f64 = j.cast();
     let n_f64 = f64x8::splat(n as f64);
-    let correction = (i_f64 + f64x8::splat(2.0)) * (i_f64 + f64x8::splat(1.0)) / f64x8::splat(2.0);
+    let correction = (i_f64 + f64x8::splat(2.0)) * (i_f64 + f64x8::splat(1.0))
+        / f64x8::splat(2.0);
     (i_f64 * n_f64 + j_f64 - correction).cast()
 }
 
@@ -47,10 +46,11 @@ pub fn offsets_to_indexes(n: usize, offsets: usizex8) -> (usizex8, usizex8) {
     let n = usizex8::splat(n);
     let d_root = usizex8::splat(2) * n - usizex8::splat(1);
     let d = d_root * d_root - usizex8::splat(8) * offsets;
-    let i2 = (usizex8::splat(2) * n - usizex8::splat(1)).cast::<f64>() - d.cast::<f64>().sqrt();
+    let i2 = (usizex8::splat(2) * n - usizex8::splat(1)).cast::<f64>()
+        - d.cast::<f64>().sqrt();
     let i: usizex8 = (i2 / f64x8::splat(2.0)).cast();
-    let triangle =
-        (i * (n - usizex8::splat(1))) - ((i + usizex8::splat(1)) * i) / usizex8::splat(2);
+    let triangle = (i * (n - usizex8::splat(1)))
+        - ((i + usizex8::splat(1)) * i) / usizex8::splat(2);
     let j = offsets + usizex8::splat(1) - triangle;
     (i, j)
 }
@@ -99,7 +99,10 @@ impl MemoizedCentroidDistances {
                     if i > 65535 || j > 65535 {
                         panic!("oh no {i} {j}");
                     }
-                    elt.write(calculator.calculate_partial_dot_product(i as u16, j as u16));
+                    elt.write(
+                        calculator
+                            .calculate_partial_dot_product(i as u16, j as u16),
+                    );
                 });
         }
         unsafe {
@@ -122,8 +125,12 @@ impl MemoizedCentroidDistances {
                 // Early bail
                 return self.lookup_centroid_squared_norm(i);
             }
-            std::cmp::Ordering::Less => index_to_offset(self.size, i as usize, j as usize),
-            std::cmp::Ordering::Greater => index_to_offset(self.size, j as usize, i as usize),
+            std::cmp::Ordering::Less => {
+                index_to_offset(self.size, i as usize, j as usize)
+            }
+            std::cmp::Ordering::Greater => {
+                index_to_offset(self.size, j as usize, i as usize)
+            }
         };
         let distance: f16 = self.dot_products[offset];
         distance
@@ -137,7 +144,8 @@ impl MemoizedCentroidDistances {
     #[inline]
     pub fn lookup_centroid_dot_products(&self, i: u16x8, j: u16x8) -> f32x8 {
         let equals_mask = i.simd_eq(j);
-        let norms = self.lookup_centroid_partial_norms_masked(i, equals_mask.cast());
+        let norms =
+            self.lookup_centroid_partial_norms_masked(i, equals_mask.cast());
 
         let less_mask = i.simd_lt(j);
         // gotta flip the greaters with the lessers
@@ -165,17 +173,24 @@ impl MemoizedCentroidDistances {
     #[inline]
     pub fn lookup_centroid_squared_norms(&self, i: u16x8) -> f32x8 {
         let i: usizex8 = i.cast();
-        let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
+        let norms_slice: &[u16] =
+            unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_or_default(norms_slice, i);
         from_f16x8_to_f32x8(gathered)
     }
 
     #[inline]
     #[allow(unused)]
-    fn lookup_centroid_partial_norms_masked(&self, i: u16x8, mask: masksizex8) -> f32x8 {
+    fn lookup_centroid_partial_norms_masked(
+        &self,
+        i: u16x8,
+        mask: masksizex8,
+    ) -> f32x8 {
         let i: usizex8 = i.cast();
-        let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
-        let gathered = u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
+        let norms_slice: &[u16] =
+            unsafe { std::mem::transmute(self.norms.as_slice()) };
+        let gathered =
+            u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
         from_f16x8_to_f32x8(gathered)
     }
 }
@@ -183,7 +198,8 @@ impl MemoizedCentroidDistances {
 #[inline]
 #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
 fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
-    unsafe { std::arch::x86_64::_mm256_cvtph_ps(src.into()) }
+    let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(src.into()) };
+    result.into()
 }
 
 // NOTE: This is slashed-out because making it work properly was taking too
@@ -234,7 +250,6 @@ fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
     }
     Simd::<f32, 8>::from_array(dst)
 }
-
 
 #[cfg(test)]
 mod offsettest {
@@ -326,7 +341,8 @@ mod offsettest {
     #[test]
     #[ignore]
     fn scalar_distances_are_mapped_right() {
-        let distances = MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
+        let distances =
+            MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
         let mut rng = StdRng::seed_from_u64(2024);
         let mut set1: Vec<_> = (0..=u16::MAX).collect();
         set1.shuffle(&mut rng);
@@ -354,7 +370,8 @@ mod offsettest {
     #[test]
     #[ignore]
     fn simd_distances_are_mapped_right() {
-        let distances = MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
+        let distances =
+            MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
         let mut rng = StdRng::seed_from_u64(2024);
         let mut set1: Vec<_> = (0..=u16::MAX).collect();
         assert!(set1.len() % 8 == 0);

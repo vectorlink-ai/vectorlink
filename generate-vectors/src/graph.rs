@@ -34,6 +34,7 @@ impl FullGraph {
             .expect("Missing id field")
     }
 
+    #[allow(unused)]
     pub fn record_count(&self) -> usize {
         self.id_graph().values.len()
     }

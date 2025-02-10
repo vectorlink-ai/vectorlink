@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use arrow::ffi_stream::ArrowArrayStreamReader;
 use datafusion::arrow::{
     array::{
         Array, FixedSizeListArray, RecordBatch, RecordBatchReader, UInt32Array,
@@ -13,7 +14,6 @@ use datafusion::arrow::{
     buffer::{Buffer, ScalarBuffer},
     datatypes::{DataType, Field, Schema},
     error::ArrowError,
-    ffi_stream::ArrowArrayStreamReader,
 };
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};

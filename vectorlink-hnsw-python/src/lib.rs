@@ -4,10 +4,10 @@ use ::vectorlink_hnsw::{
     comparator::CosineDistance1536, hnsw, index, layer, params, serialize,
     util, vectors,
 };
+use arrow::pyarrow::PyArrowType;
 use datafusion::arrow::{
     array::{Array, ArrayData},
     ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
-    pyarrow::PyArrowType,
 };
 use pyo3::{
     create_exception,
@@ -33,8 +33,7 @@ fn vectorlink_hnsw(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<BuildParams>()?;
     m.add_class::<OptimizationParams>()?;
     m.add_class::<SearchParams>()?;
-    // m.add("SerializeError", m.py().get_type::<SerializeError>())?;  // For 0.23.x
-    m.add("SerializeError", m.py().get_type_bound::<SerializeError>())?;
+    m.add("SerializeError", m.py().get_type::<SerializeError>())?;
     Ok(())
 }
 

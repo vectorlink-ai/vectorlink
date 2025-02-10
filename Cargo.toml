@@ -24,4 +24,5 @@ debug-assertions = true
 overflow-checks = true
 
 [workspace.dependencies]
-datafusion = {version="44.0.0", features=["pyarrow"]}
+arrow = { version = "54.1.0", features = ["ffi", "pyarrow"] }
+datafusion = { version = "45.0.0" }

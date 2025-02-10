@@ -241,14 +241,67 @@ fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
     // all(target_arch = "aarch64", target_feature = "neon"),
 )))]
 fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
-    let src: &[u16; 8] = src.as_array();
+    elementwise_from_f16x8_to_f32x8(src)
+}
+
+#[inline]
+#[allow(unused)]
+fn elementwise_from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    let src: [f16; 8] = unsafe { std::mem::transmute(src.to_array()) };
     let mut dst = [0_f32; 8];
     for i in 0..8 {
         // Slow but safe. Cannot use `std::mem::transmute()`
         // because `src` and `dst` have different sizes.
-        dst[i] = f32::from(src[i]);
+        dst[i] = src[i] as f32;
     }
     Simd::<f32, 8>::from_array(dst)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn f16_to_f32_conversion_works() {
+        let my_cool_f16: [f16; 8] = std::array::from_fn(|i| i as f16);
+
+        let expected_f32 =
+            my_cool_f16.iter().map(|&x| x as f32).collect::<Vec<_>>();
+
+        let converted: [u16; 8] = unsafe { std::mem::transmute(my_cool_f16) };
+        let my_cool_f32 = from_f16x8_to_f32x8(u16x8::from_array(converted));
+
+        let my_cool_f32_array = my_cool_f32.as_array();
+        for i in 0..8 {
+            assert_abs_diff_eq!(
+                expected_f32[i],
+                my_cool_f32_array[i],
+                epsilon = 0.01
+            );
+        }
+    }
+
+    #[test]
+    fn elementwise_f16_to_f32_conversion_works() {
+        let my_cool_f16: [f16; 8] = std::array::from_fn(|i| i as f16);
+
+        let expected_f32 =
+            my_cool_f16.iter().map(|&x| x as f32).collect::<Vec<_>>();
+
+        let converted: [u16; 8] = unsafe { std::mem::transmute(my_cool_f16) };
+        let my_cool_f32 =
+            elementwise_from_f16x8_to_f32x8(u16x8::from_array(converted));
+
+        let my_cool_f32_array = my_cool_f32.as_array();
+        for i in 0..8 {
+            assert_abs_diff_eq!(
+                expected_f32[i],
+                my_cool_f32_array[i],
+                epsilon = 0.01
+            );
+        }
+    }
 }
 
 #[cfg(test)]

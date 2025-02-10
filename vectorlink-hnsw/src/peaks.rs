@@ -62,7 +62,7 @@ mod tests {
         let data = vec![
             0.1, 0.101, 0.102, 0.3, 0.301, 0.302, 0.5, 0.55, 0.6, 0.8, 0.9,
         ];
-        let results = find_distance_transitions_from_slice(4, &data);
+        let _results = find_distance_transitions_from_slice(4, &data);
         todo!();
     }
 }

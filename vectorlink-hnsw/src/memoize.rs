@@ -1,5 +1,3 @@
-#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
-use core::arch::x86_64::{__m128i, __m256};
 use std::simd::{
     cmp::{SimdPartialEq, SimdPartialOrd},
     f32x8, f64x8, masksizex8,
@@ -38,7 +36,8 @@ pub fn indexes_to_offsets(n: usize, i: usizex8, j: usizex8) -> usizex8 {
     let i_f64: f64x8 = i.cast();
     let j_f64 = j.cast();
     let n_f64 = f64x8::splat(n as f64);
-    let correction = (i_f64 + f64x8::splat(2.0)) * (i_f64 + f64x8::splat(1.0)) / f64x8::splat(2.0);
+    let correction = (i_f64 + f64x8::splat(2.0)) * (i_f64 + f64x8::splat(1.0))
+        / f64x8::splat(2.0);
     (i_f64 * n_f64 + j_f64 - correction).cast()
 }
 
@@ -47,10 +46,11 @@ pub fn offsets_to_indexes(n: usize, offsets: usizex8) -> (usizex8, usizex8) {
     let n = usizex8::splat(n);
     let d_root = usizex8::splat(2) * n - usizex8::splat(1);
     let d = d_root * d_root - usizex8::splat(8) * offsets;
-    let i2 = (usizex8::splat(2) * n - usizex8::splat(1)).cast::<f64>() - d.cast::<f64>().sqrt();
+    let i2 = (usizex8::splat(2) * n - usizex8::splat(1)).cast::<f64>()
+        - d.cast::<f64>().sqrt();
     let i: usizex8 = (i2 / f64x8::splat(2.0)).cast();
-    let triangle =
-        (i * (n - usizex8::splat(1))) - ((i + usizex8::splat(1)) * i) / usizex8::splat(2);
+    let triangle = (i * (n - usizex8::splat(1)))
+        - ((i + usizex8::splat(1)) * i) / usizex8::splat(2);
     let j = offsets + usizex8::splat(1) - triangle;
     (i, j)
 }
@@ -99,7 +99,10 @@ impl MemoizedCentroidDistances {
                     if i > 65535 || j > 65535 {
                         panic!("oh no {i} {j}");
                     }
-                    elt.write(calculator.calculate_partial_dot_product(i as u16, j as u16));
+                    elt.write(
+                        calculator
+                            .calculate_partial_dot_product(i as u16, j as u16),
+                    );
                 });
         }
         unsafe {
@@ -122,8 +125,12 @@ impl MemoizedCentroidDistances {
                 // Early bail
                 return self.lookup_centroid_squared_norm(i);
             }
-            std::cmp::Ordering::Less => index_to_offset(self.size, i as usize, j as usize),
-            std::cmp::Ordering::Greater => index_to_offset(self.size, j as usize, i as usize),
+            std::cmp::Ordering::Less => {
+                index_to_offset(self.size, i as usize, j as usize)
+            }
+            std::cmp::Ordering::Greater => {
+                index_to_offset(self.size, j as usize, i as usize)
+            }
         };
         let distance: f16 = self.dot_products[offset];
         distance
@@ -137,7 +144,8 @@ impl MemoizedCentroidDistances {
     #[inline]
     pub fn lookup_centroid_dot_products(&self, i: u16x8, j: u16x8) -> f32x8 {
         let equals_mask = i.simd_eq(j);
-        let norms = self.lookup_centroid_partial_norms_masked(i, equals_mask.cast());
+        let norms =
+            self.lookup_centroid_partial_norms_masked(i, equals_mask.cast());
 
         let less_mask = i.simd_lt(j);
         // gotta flip the greaters with the lessers
@@ -154,8 +162,8 @@ impl MemoizedCentroidDistances {
             offsets.cast(),
             u16x8::splat(0),
         );
-        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
-        let partial_dot_products = f32x8::from(result);
+        let result = from_f16x8_to_f32x8(gathered.into());
+        let partial_dot_products: Simd<f32, 8> = f32x8::from(result);
 
         // we now have two simd registers with mutually exclusive lanes filled.
         // summing them should just give us a single register with all lanes filled.
@@ -165,23 +173,136 @@ impl MemoizedCentroidDistances {
     #[inline]
     pub fn lookup_centroid_squared_norms(&self, i: u16x8) -> f32x8 {
         let i: usizex8 = i.cast();
-        let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
+        let norms_slice: &[u16] =
+            unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_or_default(norms_slice, i);
-        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
-        f32x8::from(result)
+        from_f16x8_to_f32x8(gathered)
     }
 
     #[inline]
     #[allow(unused)]
-    fn lookup_centroid_partial_norms_masked(&self, i: u16x8, mask: masksizex8) -> f32x8 {
+    fn lookup_centroid_partial_norms_masked(
+        &self,
+        i: u16x8,
+        mask: masksizex8,
+    ) -> f32x8 {
         let i: usizex8 = i.cast();
-        let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
-        let gathered = u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
-        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
-        f32x8::from(result)
+        let norms_slice: &[u16] =
+            unsafe { std::mem::transmute(self.norms.as_slice()) };
+        let gathered =
+            u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
+        from_f16x8_to_f32x8(gathered)
     }
 }
 
+#[inline]
+#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
+fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(src.into()) };
+    result.into()
+}
+
+// NOTE: This is slashed-out because making it work properly was taking too
+//       much time and we're not using the code THAT much.
+// #[inline]
+// #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+// fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+//     use core::arch::aarch64::{
+//         uint16x4_t, uint16x8_t, uint32x4_t, float32x4_t,
+//         vget_high_u16, vget_low_u16, vmovl_u16, vcvtq_f32_u32
+//     };
+//     use std::simd::f32x4;
+
+//     #[inline(always)]
+//     unsafe fn extract_blocks(src: uint16x8_t) -> (uint16x4_t, uint16x4_t) {
+//         (vget_high_u16(src), vget_low_u16(src))
+//     }
+
+//     #[inline(always)]
+//     unsafe fn simdify_block(block: uint16x4_t) -> Simd<f32, 4> {
+//         let block: uint32x4_t = vmovl_u16(block); // widen each scalar
+//         let block: float32x4_t = vcvtq_f32_u32(block); // floatify
+//         block.into()
+//     }
+
+//     let src: uint16x8_t = src.into();
+//     unsafe { // Process as `high` and `low` blocks of values, each of 4 elements
+//         let (h, l): (uint16x4_t, uint16x4_t) = extract_blocks(src);
+//         let (h, l): (f32x4, f32x4) = (simdify_block(h), simdify_block(l));
+//         let array: [[f32; 4]; 2] = [h.to_array(), l.to_array()];
+//         let array: [f32; 8] = std::mem::transmute(array);
+//         Simd::<f32, 8>::from_array(array)
+//     }
+// }
+
+#[inline]
+#[cfg(not(any( // default non-SIMD implementation
+    all(target_arch = "x86_64", target_feature = "f16c"),
+    // all(target_arch = "aarch64", target_feature = "neon"),
+)))]
+fn from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    elementwise_from_f16x8_to_f32x8(src)
+}
+
+#[inline]
+#[allow(unused)]
+fn elementwise_from_f16x8_to_f32x8(src: Simd<u16, 8>) -> Simd<f32, 8> {
+    let src: [f16; 8] = unsafe { std::mem::transmute(src.to_array()) };
+    let mut dst = [0_f32; 8];
+    for i in 0..8 {
+        // Slow but safe. Cannot use `std::mem::transmute()`
+        // because `src` and `dst` have different sizes.
+        dst[i] = src[i] as f32;
+    }
+    Simd::<f32, 8>::from_array(dst)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn f16_to_f32_conversion_works() {
+        let my_cool_f16: [f16; 8] = std::array::from_fn(|i| i as f16);
+
+        let expected_f32 =
+            my_cool_f16.iter().map(|&x| x as f32).collect::<Vec<_>>();
+
+        let converted: [u16; 8] = unsafe { std::mem::transmute(my_cool_f16) };
+        let my_cool_f32 = from_f16x8_to_f32x8(u16x8::from_array(converted));
+
+        let my_cool_f32_array = my_cool_f32.as_array();
+        for i in 0..8 {
+            assert_abs_diff_eq!(
+                expected_f32[i],
+                my_cool_f32_array[i],
+                epsilon = 0.01
+            );
+        }
+    }
+
+    #[test]
+    fn elementwise_f16_to_f32_conversion_works() {
+        let my_cool_f16: [f16; 8] = std::array::from_fn(|i| i as f16);
+
+        let expected_f32 =
+            my_cool_f16.iter().map(|&x| x as f32).collect::<Vec<_>>();
+
+        let converted: [u16; 8] = unsafe { std::mem::transmute(my_cool_f16) };
+        let my_cool_f32 =
+            elementwise_from_f16x8_to_f32x8(u16x8::from_array(converted));
+
+        let my_cool_f32_array = my_cool_f32.as_array();
+        for i in 0..8 {
+            assert_abs_diff_eq!(
+                expected_f32[i],
+                my_cool_f32_array[i],
+                epsilon = 0.01
+            );
+        }
+    }
+}
 
 #[cfg(test)]
 mod offsettest {
@@ -273,7 +394,8 @@ mod offsettest {
     #[test]
     #[ignore]
     fn scalar_distances_are_mapped_right() {
-        let distances = MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
+        let distances =
+            MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
         let mut rng = StdRng::seed_from_u64(2024);
         let mut set1: Vec<_> = (0..=u16::MAX).collect();
         set1.shuffle(&mut rng);
@@ -301,7 +423,8 @@ mod offsettest {
     #[test]
     #[ignore]
     fn simd_distances_are_mapped_right() {
-        let distances = MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
+        let distances =
+            MemoizedCentroidDistances::new(&IndexProductDistanceCalculator);
         let mut rng = StdRng::seed_from_u64(2024);
         let mut set1: Vec<_> = (0..=u16::MAX).collect();
         assert!(set1.len() % 8 == 0);

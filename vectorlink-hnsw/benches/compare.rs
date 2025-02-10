@@ -1,7 +1,7 @@
 #![feature(test)]
 
 extern crate test;
-use hnsw_redux::vecmath;
+use vectorlink_hnsw::vecmath;
 use rand::{distributions::Uniform, rngs::StdRng, Rng, SeedableRng};
 use test::Bencher;
 

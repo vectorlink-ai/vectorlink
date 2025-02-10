@@ -1,8 +1,10 @@
+#[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
+use core::arch::x86_64::{__m128i, __m256};
 use std::simd::{
     cmp::{SimdPartialEq, SimdPartialOrd},
     f32x8, f64x8, masksizex8,
     num::{SimdFloat, SimdUint},
-    u16x8, usizex8, StdFloat,
+    u16x8, usizex8, Simd, StdFloat,
 };
 
 use rayon::prelude::*;
@@ -146,13 +148,12 @@ impl MemoizedCentroidDistances {
         let offsets = indexes_to_offsets(self.size, i.cast(), j.cast());
         let dot_products_slice: &[u16] =
             unsafe { std::mem::transmute(self.dot_products.as_slice()) };
-        let gathered = u16x8::gather_select(
+        let gathered: Simd<u16, 8> = u16x8::gather_select(
             dot_products_slice,
             (!equals_mask).cast(),
             offsets.cast(),
             u16x8::splat(0),
         );
-
         let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
         let partial_dot_products = f32x8::from(result);
 
@@ -166,10 +167,8 @@ impl MemoizedCentroidDistances {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_or_default(norms_slice, i);
-        unsafe {
-            let result = std::arch::x86_64::_mm256_cvtph_ps(gathered.into());
-            f32x8::from(result)
-        }
+        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
+        f32x8::from(result)
     }
 
     #[inline]
@@ -178,12 +177,11 @@ impl MemoizedCentroidDistances {
         let i: usizex8 = i.cast();
         let norms_slice: &[u16] = unsafe { std::mem::transmute(self.norms.as_slice()) };
         let gathered = u16x8::gather_select(norms_slice, mask, i, u16x8::splat(0));
-        unsafe {
-            let result = std::arch::x86_64::_mm256_cvtph_ps(gathered.into());
-            f32x8::from(result)
-        }
+        let result = unsafe { std::arch::x86_64::_mm256_cvtph_ps(gathered.into()) };
+        f32x8::from(result)
     }
 }
+
 
 #[cfg(test)]
 mod offsettest {

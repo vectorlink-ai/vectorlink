@@ -1,6 +1,6 @@
 #![feature(test)]
 extern crate test;
-use hnsw_redux::{
+use vectorlink_hnsw::{
     comparator::CosineDistance1024,
     hnsw::Hnsw,
     params::{BuildParams, OptimizationParams, SearchParams},

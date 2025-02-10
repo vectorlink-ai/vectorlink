@@ -3,6 +3,11 @@ use std::{
     sync::Arc,
 };
 
+use datafusion::arrow::{
+    array::{ArrayData, FixedSizeListArray},
+    datatypes::{DataType, Field},
+    error::ArrowError,
+};
 use itertools::Itertools;
 use rayon::prelude::*;
 
@@ -48,8 +53,18 @@ impl AsRef<Layer> for Layer {
 
 pub trait VectorComparator: Sync + Clone + Send {
     fn compare_vecs_stored(&self, left: &[u32], right: u32, result: &mut [f32]);
-    fn compare_vecs_stored_unstored(&self, stored: &[u32], unstored: &[u8], result: &mut [f32]);
-    fn compare_vecs_unstored(&self, left: &[u8], right: &[u8], result: &mut [f32]);
+    fn compare_vecs_stored_unstored(
+        &self,
+        stored: &[u32],
+        unstored: &[u8],
+        result: &mut [f32],
+    );
+    fn compare_vecs_unstored(
+        &self,
+        left: &[u8],
+        right: &[u8],
+        result: &mut [f32],
+    );
     fn vec_group_size() -> usize;
     fn num_vecs(&self) -> usize;
     fn vector_byte_size() -> usize;
@@ -85,16 +100,25 @@ pub trait VectorComparator: Sync + Clone + Send {
         result[0]
     }
 
-    fn compare_vecs_vector(&self, left: &[u32], right: Vector, result: &mut [f32]) {
+    fn compare_vecs_vector(
+        &self,
+        left: &[u32],
+        right: Vector,
+        result: &mut [f32],
+    ) {
         match right {
-            Vector::Slice(slice) => self.compare_vecs_stored_unstored(left, slice, result),
+            Vector::Slice(slice) => {
+                self.compare_vecs_stored_unstored(left, slice, result)
+            }
             Vector::Id(id) => self.compare_vecs_stored(left, id, result),
         }
     }
 
     fn compare_vec_vector(&self, left: u32, right: Vector) -> f32 {
         match right {
-            Vector::Slice(slice) => self.compare_vec_stored_unstored(left, slice),
+            Vector::Slice(slice) => {
+                self.compare_vec_stored_unstored(left, slice)
+            }
             Vector::Id(id) => self.compare_vec_stored(left, id),
         }
     }
@@ -114,7 +138,10 @@ pub trait VectorRecall: Sync {
 }
 
 impl Layer {
-    pub fn new(neighborhoods: SimdAlignedAllocation<u32>, single_neighborhood_size: usize) -> Self {
+    pub fn new(
+        neighborhoods: SimdAlignedAllocation<u32>,
+        single_neighborhood_size: usize,
+    ) -> Self {
         assert_eq!(0, neighborhoods.len() % single_neighborhood_size);
         Self {
             neighborhoods,
@@ -128,10 +155,14 @@ impl Layer {
         self.single_neighborhood_size
     }
 
-    pub fn from_data(data: SimdAlignedAllocation<u8>, single_neighborhood_size: usize) -> Self {
+    pub fn from_data(
+        data: SimdAlignedAllocation<u8>,
+        single_neighborhood_size: usize,
+    ) -> Self {
         assert_eq!(
             0,
-            data.len() % (std::mem::size_of::<u32>() * single_neighborhood_size),
+            data.len()
+                % (std::mem::size_of::<u32>() * single_neighborhood_size),
             "data is not a multiple of neighborhood size"
         );
 
@@ -155,7 +186,8 @@ impl Layer {
         &self,
         comparator: &C,
     ) -> SimdAlignedAllocation<f32> {
-        let len = self.number_of_neighborhoods() * self.single_neighborhood_size;
+        let len =
+            self.number_of_neighborhoods() * self.single_neighborhood_size;
         let mut distances: SimdAlignedAllocation<f32> =
             unsafe { SimdAlignedAllocation::alloc(len) };
 
@@ -171,7 +203,11 @@ impl Layer {
                     .map(move |(n, d)| (i, n, d))
             })
             .for_each(|(i, neighborhood_chunk, distances_chunk)| {
-                comparator.compare_vecs_stored(neighborhood_chunk, i as u32, distances_chunk);
+                comparator.compare_vecs_stored(
+                    neighborhood_chunk,
+                    i as u32,
+                    distances_chunk,
+                );
             });
 
         distances
@@ -186,19 +222,21 @@ impl Layer {
         priorities_slice: &mut [f32],
         comparator: &C,
     ) -> usize {
-        let total_neighborhood_size =
-            self.single_neighborhood_size + search_params.circulant_parameter_count;
+        let total_neighborhood_size = self.single_neighborhood_size
+            + search_params.circulant_parameter_count;
         debug_assert!(
             total_neighborhood_size >= C::vec_group_size()
                 && total_neighborhood_size % C::vec_group_size() == 0,
             "comparator takes a vector group size that doesn't cleanly fit into the neighborhood size"
         );
-        let (seeds, n_pops) = visit_queue.pop_first_n(search_params.parallel_visit_count);
+        let (seeds, n_pops) =
+            visit_queue.pop_first_n(search_params.parallel_visit_count);
         let number_of_neighbors = n_pops * total_neighborhood_size;
         let seeds_iter = seeds.into_iter().map(|(id, _)| id);
-        let ids_iter = ids_slice[0..number_of_neighbors].chunks_mut(total_neighborhood_size);
-        let priorities_iter =
-            priorities_slice[0..number_of_neighbors].chunks_mut(total_neighborhood_size);
+        let ids_iter = ids_slice[0..number_of_neighbors]
+            .chunks_mut(total_neighborhood_size);
+        let priorities_iter = priorities_slice[0..number_of_neighbors]
+            .chunks_mut(total_neighborhood_size);
 
         let zipped = seeds_iter.zip(ids_iter.zip(priorities_iter));
 
@@ -212,30 +250,45 @@ impl Layer {
                         (neighborhood, neighbor_group, ids_out, priorities_out)
                     })
             })
-            .for_each(|(neighborhood, neighbor_group, ids_out, priorities_out)| {
-                if neighbor_group < self.single_neighborhood_size / C::vec_group_size() {
-                    let neighbor_offset = neighborhood as usize * self.single_neighborhood_size
-                        + neighbor_group * C::vec_group_size();
-                    let vector_ids =
-                        &self.neighborhoods[neighbor_offset..neighbor_offset + C::vec_group_size()];
-                    comparator.compare_vecs_vector(vector_ids, query_vec, priorities_out);
-                    ids_out.copy_from_slice(vector_ids);
-                } else {
-                    let prime_group =
-                        neighbor_group - self.single_neighborhood_size / C::vec_group_size();
-                    let primes_offset = prime_group * C::vec_group_size();
-                    let mut vector_ids = vec![0; C::vec_group_size()];
-                    for (idx, prime) in PRIMES[primes_offset..primes_offset + C::vec_group_size()]
-                        .iter()
-                        .enumerate()
+            .for_each(
+                |(neighborhood, neighbor_group, ids_out, priorities_out)| {
+                    if neighbor_group
+                        < self.single_neighborhood_size / C::vec_group_size()
                     {
-                        vector_ids[idx] =
-                            (neighborhood + *prime as u32) % self.number_of_neighborhoods() as u32;
+                        let neighbor_offset = neighborhood as usize
+                            * self.single_neighborhood_size
+                            + neighbor_group * C::vec_group_size();
+                        let vector_ids = &self.neighborhoods[neighbor_offset
+                            ..neighbor_offset + C::vec_group_size()];
+                        comparator.compare_vecs_vector(
+                            vector_ids,
+                            query_vec,
+                            priorities_out,
+                        );
+                        ids_out.copy_from_slice(vector_ids);
+                    } else {
+                        let prime_group = neighbor_group
+                            - self.single_neighborhood_size
+                                / C::vec_group_size();
+                        let primes_offset = prime_group * C::vec_group_size();
+                        let mut vector_ids = vec![0; C::vec_group_size()];
+                        for (idx, prime) in PRIMES
+                            [primes_offset..primes_offset + C::vec_group_size()]
+                            .iter()
+                            .enumerate()
+                        {
+                            vector_ids[idx] = (neighborhood + *prime as u32)
+                                % self.number_of_neighborhoods() as u32;
+                        }
+                        comparator.compare_vecs_vector(
+                            &vector_ids,
+                            query_vec,
+                            priorities_out,
+                        );
+                        ids_out.copy_from_slice(&vector_ids);
                     }
-                    comparator.compare_vecs_vector(&vector_ids, query_vec, priorities_out);
-                    ids_out.copy_from_slice(&vector_ids);
-                }
-            });
+                },
+            );
 
         n_pops
     }
@@ -271,8 +324,9 @@ impl Layer {
             if n_pops == 0 {
                 break;
             }
-            let actual_result_length =
-                n_pops * (self.single_neighborhood_size + search_params.circulant_parameter_count);
+            let actual_result_length = n_pops
+                * (self.single_neighborhood_size
+                    + search_params.circulant_parameter_count);
             let ids_found = &ids_slice[0..actual_result_length];
             let priorities_found = &priorities_slice[0..actual_result_length];
 
@@ -298,10 +352,16 @@ impl Layer {
     pub fn copy_neighbors_into(&self, vector_id: u32, result: &mut [u32]) {
         debug_assert_eq!(result.len(), self.single_neighborhood_size());
         let offset = self.single_neighborhood_size * vector_id as usize;
-        result.copy_from_slice(&self.neighborhoods[offset..offset + self.single_neighborhood_size]);
+        result.copy_from_slice(
+            &self.neighborhoods[offset..offset + self.single_neighborhood_size],
+        );
     }
 
-    pub fn par_extract_neighbors(&self, vector_ids: &[u32], results: &mut [u32]) {
+    pub fn par_extract_neighbors(
+        &self,
+        vector_ids: &[u32],
+        results: &mut [u32],
+    ) {
         assert_eq!(
             results.len(),
             vector_ids.len() * self.single_neighborhood_size()
@@ -312,6 +372,32 @@ impl Layer {
             .for_each(|(&vector_id, neighborhood_out)| {
                 self.copy_neighbors_into(vector_id, neighborhood_out);
             });
+    }
+
+    pub fn to_arrow_array(&self) -> Result<FixedSizeListArray, ArrowError> {
+        let data = ArrayData::builder(DataType::UInt32)
+            .len(
+                self.number_of_neighborhoods()
+                    * self.single_neighborhood_size(),
+            )
+            .add_buffer(datafusion::arrow::buffer::Buffer::from_slice_ref(
+                &*self.neighborhoods,
+            ))
+            .build()?;
+        let are_null_values_allowed = false;
+        let list_data_type = DataType::FixedSizeList(
+            Arc::new(Field::new_list_field(
+                DataType::UInt32,
+                are_null_values_allowed,
+            )),
+            self.single_neighborhood_size().try_into().unwrap(),
+        );
+        let list_data = ArrayData::builder(list_data_type)
+            .len(self.number_of_neighborhoods())
+            .add_child_data(data)
+            .build()?;
+
+        Ok(FixedSizeListArray::from(list_data))
     }
 
     /// pass in search_vector_ids and results with plenty of space
@@ -351,7 +437,10 @@ impl Layer {
             }
 
             // get the next convolution of neighbors out
-            eprintln!("iteration {i}: search queue is {}", search_vector_ids.len());
+            eprintln!(
+                "iteration {i}: search queue is {}",
+                search_vector_ids.len()
+            );
             self.par_extract_neighbors(search_vector_ids, results);
 
             // register results with the 'seen' bitmap.
@@ -392,7 +481,12 @@ impl Layer {
         seen.set_from_ids(search_vector_ids);
 
         // find out what /is/ connected.
-        self.par_flood_find_neighbors(distance, search_vector_ids, result_vector_ids, &mut seen);
+        self.par_flood_find_neighbors(
+            distance,
+            search_vector_ids,
+            result_vector_ids,
+            &mut seen,
+        );
 
         // invert that, so we know the unconnecteds
         seen.par_invert();
@@ -423,7 +517,8 @@ impl Layer {
                     .map(move |js| (i, js))
             })
             .for_each(|(i, js)| {
-                let offset = index_to_offset(num_vecs, i as usize, js[0] as usize);
+                let offset =
+                    index_to_offset(num_vecs, i as usize, js[0] as usize);
                 let results: &mut [f32] = unsafe {
                     std::slice::from_raw_parts_mut(
                         distances.as_ptr().add(offset) as *mut f32,
@@ -439,7 +534,11 @@ impl Layer {
                     let mut inputs = vec![0_u32; C::vec_group_size()];
                     let mut temp_results = vec![0.0_f32; C::vec_group_size()];
                     inputs[0..js.len()].copy_from_slice(&js);
-                    comparator.compare_vecs_stored(&inputs, i, &mut temp_results);
+                    comparator.compare_vecs_stored(
+                        &inputs,
+                        i,
+                        &mut temp_results,
+                    );
 
                     results.copy_from_slice(&temp_results[0..js.len()]);
                 }
@@ -460,11 +559,16 @@ impl Layer {
                     .map(|v| {
                         (
                             v,
-                            distances[index_to_offset(num_vecs, neighborhood, v as usize)],
+                            distances[index_to_offset(
+                                num_vecs,
+                                neighborhood,
+                                v as usize,
+                            )],
                         )
                     })
                     .collect();
-                distances_for_vec.sort_unstable_by_key(|(n, x)| (OrderedFloat(*x), *n));
+                distances_for_vec
+                    .sort_unstable_by_key(|(n, x)| (OrderedFloat(*x), *n));
                 for i in 0..single_neighborhood_size {
                     let ptr = &mut neighborhood_slice[i];
 
@@ -495,11 +599,13 @@ impl Layer {
             .enumerate()
             .for_each(|(idx, neighborhood)| {
                 for (i, n) in neighborhood.iter_mut().enumerate() {
-                    let new = ((idx + PRIMES[i % PRIMES.len()]) % num_vecs) as u32;
+                    let new =
+                        ((idx + PRIMES[i % PRIMES.len()]) % num_vecs) as u32;
                     // We might have accidentally selected
                     // ourselves, need to shift to another prime
                     if new == idx as u32 {
-                        *n = ((idx + PRIMES[(i + 1) % PRIMES.len()]) % num_vecs) as u32;
+                        *n = ((idx + PRIMES[(i + 1) % PRIMES.len()]) % num_vecs)
+                            as u32;
                     } else {
                         *n = new
                     }
@@ -524,7 +630,8 @@ impl Layer {
         let size = num_vecs * single_neighborhood_size;
         let mut neighborhoods: SimdAlignedAllocation<u32> =
             unsafe { SimdAlignedAllocation::alloc(size) };
-        let neighborhoods_iter = neighborhoods[..size].par_chunks_mut(single_neighborhood_size);
+        let neighborhoods_iter =
+            neighborhoods[..size].par_chunks_mut(single_neighborhood_size);
         let mut grouped_vecs: Vec<_> = (0..num_vecs as u32)
             .into_par_iter()
             .zip(neighborhoods_iter)
@@ -546,12 +653,14 @@ impl Layer {
         groups
             .into_par_iter()
             .flat_map(|g| {
-                let (vec_ids, neighborhoods): (Vec<_>, Vec<_>) = g.into_iter().unzip();
+                let (vec_ids, neighborhoods): (Vec<_>, Vec<_>) =
+                    g.into_iter().unzip();
                 let vec_ids = Arc::new(vec_ids);
-                neighborhoods
-                    .into_par_iter()
-                    .enumerate()
-                    .map(move |(idx, neighborhood)| (idx, neighborhood, vec_ids.clone()))
+                neighborhoods.into_par_iter().enumerate().map(
+                    move |(idx, neighborhood)| {
+                        (idx, neighborhood, vec_ids.clone())
+                    },
+                )
             })
             .for_each(|(idx, neighborhood, vec_ids)| {
                 for (i, n) in neighborhood.iter_mut().enumerate() {
@@ -559,7 +668,8 @@ impl Layer {
                     // We might have accidentally selected
                     // ourselves, need to shift to another prime
                     if new == idx {
-                        *n = vec_ids[(idx + PRIMES[(i + 1) % PRIMES.len()]) % vec_ids.len()];
+                        *n = vec_ids[(idx + PRIMES[(i + 1) % PRIMES.len()])
+                            % vec_ids.len()];
                     } else {
                         *n = vec_ids[new]
                     }
@@ -580,7 +690,10 @@ impl Layer {
         let mut memoized_distances = self.neighborhood_distances(comparator);
         self.neighborhoods
             .par_chunks_mut(self.single_neighborhood_size)
-            .zip(memoized_distances.par_chunks_mut(self.single_neighborhood_size))
+            .zip(
+                memoized_distances
+                    .par_chunks_mut(self.single_neighborhood_size),
+            )
             .enumerate()
             .for_each(|(_vector_id, (neighborhood, distances))| {
                 let mut pairs: Vec<_> = neighborhood
@@ -623,12 +736,16 @@ impl Layer {
     ) -> impl ParallelIterator<Item = (u32, Vec<(u32, f32)>)> + 'a {
         let neighborhood_size = self.single_neighborhood_size();
         let node_count = self.number_of_neighborhoods();
-        let buffer_size =
-            neighborhood_size * (sp.parallel_visit_count + sp.circulant_parameter_count);
+        let buffer_size = neighborhood_size
+            * (sp.parallel_visit_count + sp.circulant_parameter_count);
         (0..node_count as u32).into_par_iter().map(move |node_id| {
-            let mut uninitialized_visit_queue = OrderedRingQueue::new(sp.search_queue_len);
-            let mut search_queue =
-                OrderedRingQueue::new_with(sp.search_queue_len, &[node_id], &[0.0]);
+            let mut uninitialized_visit_queue =
+                OrderedRingQueue::new(sp.search_queue_len);
+            let mut search_queue = OrderedRingQueue::new_with(
+                sp.search_queue_len,
+                &[node_id],
+                &[0.0],
+            );
             let mut ids = Vec::with_capacity(buffer_size);
             let mut priorities = Vec::with_capacity(buffer_size);
             unsafe {
@@ -676,7 +793,9 @@ impl IndexMut<usize> for Layer {
 #[cfg(test)]
 mod tests {
 
-    use crate::{comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_vectors};
+    use crate::{
+        comparator::EuclideanDistance8x8, hnsw::Hnsw, test_util::random_vectors,
+    };
 
     use super::*;
 

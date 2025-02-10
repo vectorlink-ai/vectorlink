@@ -1,7 +1,7 @@
 use std::io;
 
 use clap::Parser;
-use hnsw_redux::test_util::random_vectors_normalized;
+use vectorlink_hnsw::test_util::random_vectors_normalized;
 
 #[derive(Parser, Debug)]
 struct Command {

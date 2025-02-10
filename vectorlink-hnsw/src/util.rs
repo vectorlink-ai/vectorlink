@@ -6,12 +6,12 @@ use std::{
     simd::{LaneCount, Simd, SimdElement, SupportedLaneCount},
 };
 
-use datafusion::arrow::alloc::Allocation;
 
 /// Align allocations to be rust simd friendly.
-/// The biggest possible simd abstration is f64x64, which is 512
-/// bytes. So this will make sure we're aligned to that, allowing simd instructions over the entire structure.
-/// It also means the allocation will round up, making sure we can read an even number of 512 byte chunks.
+/// The biggest possible simd abstration is f64x64, which is 512 bytes. So this
+/// will make sure we're aligned to that, allowing simd instructions over the
+/// entire structure.  It also means the allocation will round up, making sure
+/// we can read an even number of 512 byte chunks.
 pub struct SimdAlignedAllocation<T: SimdElement> {
     data: NonNull<u8>,
     len: usize,

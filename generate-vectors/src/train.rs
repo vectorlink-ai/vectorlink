@@ -1,7 +1,7 @@
 use crate::graph::CompareGraph;
 use argmin::core::{CostFunction, Error, Gradient};
-use hnsw_redux::layer::VectorComparator;
-use hnsw_redux::{comparator::CosineDistance1536, vectors::Vectors};
+use vectorlink_hnsw::layer::VectorComparator;
+use vectorlink_hnsw::{comparator::CosineDistance1536, vectors::Vectors};
 use nalgebra::{DMatrix, DVector};
 use std::collections::HashMap;
 

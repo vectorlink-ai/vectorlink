@@ -1,3 +1,7 @@
 /target
 Cargo.lock
 .direnv
+.emacs.desktop*
+
+*.abi3.so
+**/__pycache__/

@@ -5,7 +5,7 @@ use anyhow::Context;
 use clap::Parser;
 use csv::Writer;
 use either::Either;
-use hnsw_redux::{
+use vectorlink_hnsw::{
     index::{Index, IndexConfiguration},
     params::SearchParams,
     vectors::{Vector, Vectors},

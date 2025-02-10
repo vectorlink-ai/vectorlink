@@ -1,6 +1,19 @@
 [workspace]
 resolver = "2"
-members = [ "generate-random-vectors","hnsw-redux", "improve", "index-vectors", "knn", "normalize", "search-collation", "test-recall", "time-load", "generate-vectors", "index-graph-field"]
+members = [
+    "generate-random-vectors",
+    "generate-vectors",
+    "vectorlink-hnsw",
+    "vectorlink-hnsw-python",
+    "improve",
+    "index-graph-field",
+    "index-vectors",
+    "knn",
+    "normalize",
+    "search-collation",
+    "test-recall",
+    "time-load",
+]
 
 [profile.release]
 debug = true
@@ -9,3 +22,6 @@ debug = true
 inherits = "release"
 debug-assertions = true
 overflow-checks = true
+
+[workspace.dependencies]
+datafusion = {version="44.0.0", features=["pyarrow"]}

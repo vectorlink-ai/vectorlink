@@ -1,0 +1,18 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+# "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
+features = ["pyo3/extension-module"]
+python-source = "python"
+
+[project]
+name = "vectorlink-hnsw"
+description = "Python bindings for vectorlink-hnsw"
+requires-python = ">=3.8"
+dynamic = ["version"]
+dependencies = [
+    "datafusion>=43.1.0",
+    "typing-extensions>=4.12.2",
+]

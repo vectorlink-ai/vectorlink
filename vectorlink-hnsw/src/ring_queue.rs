@@ -7,6 +7,15 @@ pub enum VecOrSlice<'a, T> {
     Slice(&'a mut [T]),
 }
 
+impl<T: Clone> VecOrSlice<'_, T> {
+    pub fn into_vec(self) -> Vec<T> {
+        match self {
+            VecOrSlice::Vec(vec) => vec,
+            VecOrSlice::Slice(s) => s.to_vec(),
+        }
+    }
+}
+
 impl<T> std::ops::Deref for VecOrSlice<'_, T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
@@ -264,6 +273,18 @@ impl<'a> RingQueue<'a> {
         let mut result = Vec::with_capacity(self.len());
         result.extend(self.iter());
         result
+    }
+
+    pub fn ids(&self) -> &[u32] {
+        &self.ids
+    }
+
+    pub fn priorities(&self) -> &[f32] {
+        &self.priorities
+    }
+
+    pub fn into_inner(self) -> (VecOrSlice<'a, u32>, VecOrSlice<'a, f32>) {
+        (self.ids, self.priorities)
     }
 }
 
@@ -531,6 +552,18 @@ impl<'a> OrderedRingQueue<'a> {
         }
 
         did_something
+    }
+
+    pub fn ids(&self) -> &[u32] {
+        self.0.ids()
+    }
+
+    pub fn priorities(&self) -> &[f32] {
+        self.0.priorities()
+    }
+
+    pub fn into_inner(self) -> (VecOrSlice<'a, u32>, VecOrSlice<'a, f32>) {
+        self.0.into_inner()
     }
 }
 

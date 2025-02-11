@@ -1,5 +1,3 @@
-#![allow(unexpected_cfgs)]
-
 use ::vectorlink_hnsw::{
     comparator::CosineDistance1536, hnsw, index, layer, params, serialize,
     util, vectors,

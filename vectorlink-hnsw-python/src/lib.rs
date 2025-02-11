@@ -1,18 +1,29 @@
+mod queue;
+
+use lazy_static::lazy_static;
+use std::sync::Arc;
+
 use ::vectorlink_hnsw::{
-    comparator::CosineDistance1536, hnsw, index, layer, params, serialize,
-    util, vectors,
+    comparator::CosineDistance1536,
+    hnsw, index, layer, params, serialize, util,
+    vectors::{self, Vector},
 };
-use arrow::pyarrow::PyArrowType;
+use arrow::{
+    array::{Float32Array, RecordBatch, UInt32Array},
+    datatypes::{DataType, Field, Schema, SchemaRef},
+    pyarrow::PyArrowType,
+};
 use datafusion::arrow::{
     array::{Array, ArrayData},
     ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream},
 };
 use pyo3::{
     create_exception,
-    exceptions::{PyException, PyIndexError, PyRuntimeError},
+    exceptions::{PyException, PyIndexError, PyRuntimeError, PyValueError},
     prelude::*,
     types::PyCapsule,
 };
+use queue::OrderedRingQueue;
 
 // This function defines a Python module. Its name MUST match the the `lib.name`
 // settings in `Cargo.toml`, else Python will not be able to import the module.
@@ -31,6 +42,7 @@ fn vectorlink_hnsw(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<BuildParams>()?;
     m.add_class::<OptimizationParams>()?;
     m.add_class::<SearchParams>()?;
+    m.add_class::<OrderedRingQueue>()?;
     m.add("SerializeError", m.py().get_type::<SerializeError>())?;
     Ok(())
 }
@@ -236,7 +248,6 @@ impl Layer {
     }
 }
 
-
 #[pyclass(module = "vectorlink_hnsw")]
 pub struct HnswMetadata(serialize::HnswMetadata);
 
@@ -331,6 +342,51 @@ impl Hnsw {
 
     pub fn metadata(&self) -> HnswMetadata {
         HnswMetadata(self.0.metadata())
+    }
+
+    pub fn search_from_initial_with_cosine_1536(
+        &self,
+        vecs: &Vectors,
+        query_vec: PyArrowType<ArrayData>,
+        search_params: SearchParams,
+    ) -> PyResult<PyArrowType<RecordBatch>> {
+        let query_vec = query_vec.0;
+        let search_params = search_params.into_raw();
+        let comparator = CosineDistance1536::new(&vecs.0);
+        if !matches!(query_vec.data_type(), DataType::Float32) {
+            return Err(PyValueError::new_err("query vec is not a float list"));
+        }
+        let query_vec = Float32Array::from(query_vec);
+        if query_vec.len() != 1536 {
+            return Err(PyValueError::new_err("query vec is not length 1536"));
+        }
+
+        let data = query_vec.into_data();
+        let slice = data.buffers().last().unwrap().as_slice();
+        assert_eq!(slice.len(), 1536 * std::mem::size_of::<f32>());
+
+        let result = self.0.search_from_initial(
+            Vector::Slice(slice),
+            &search_params,
+            &comparator,
+        );
+
+        let (ids, distances) = result.into_inner();
+        let ids: Arc<dyn Array> = Arc::new(UInt32Array::from(ids.to_vec()));
+        let distances: Arc<dyn Array> =
+            Arc::new(Float32Array::from(distances.to_vec()));
+
+        lazy_static! {
+            static ref SCHEMA: SchemaRef = Arc::new(Schema::new(vec![
+                Arc::new(Field::new("id", DataType::UInt32, false)),
+                Arc::new(Field::new("distance", DataType::Float32, false))
+            ]));
+        }
+
+        let result =
+            RecordBatch::try_new(SCHEMA.clone(), vec![ids, distances]).unwrap();
+
+        Ok(result.into())
     }
 
     pub fn store(&self, dirpath: &str) -> PyResult<()> {

@@ -158,7 +158,7 @@ impl Vectors {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LayerMetadata {
     single_neighborhood_size: usize,
 }
@@ -334,7 +334,7 @@ impl Layer {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct HnswMetadata {
     layer_count: usize,
 }

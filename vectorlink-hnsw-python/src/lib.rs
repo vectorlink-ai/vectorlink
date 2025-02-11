@@ -1,5 +1,3 @@
-#![allow(unexpected_cfgs)]
-
 use ::vectorlink_hnsw::{
     comparator::CosineDistance1536, hnsw, index, layer, params, serialize,
     util, vectors,
@@ -114,6 +112,10 @@ impl Vectors {
     pub fn load(dirpath: &str, identity: &str) -> PyResult<Self> {
         Ok(Self(vectors::Vectors::load(dirpath, identity)?))
     }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self.0)
+    }
 }
 
 // PyO3 / Maturin require that no generics are used at FFI boundaries.
@@ -129,7 +131,7 @@ macro_rules! wrap_SimdAlignedAllocation_type_for_element {
         paste::paste! {
             $(
                 #[pyclass(module = "vectorlink_hnsw")]
-                #[derive(Clone)]
+                #[derive(Clone, Debug)]
                 pub struct [<SimdAlignedAllocation $element:upper>](
                     util::SimdAlignedAllocation<$element>
                 );
@@ -157,6 +159,10 @@ macro_rules! wrap_SimdAlignedAllocation_type_for_element {
                             default_value
                         ))
                     }
+
+                    pub fn __repr__(&self) -> String {
+                        format!("{:#?}", self.0)
+                    }
                 }
             )*
         }
@@ -170,6 +176,13 @@ wrap_SimdAlignedAllocation_type_for_element![u8];
 #[allow(unused)]
 #[pyclass(module = "vectorlink_hnsw")]
 pub struct LayerMetadata(serialize::LayerMetadata);
+
+#[pymethods]
+impl LayerMetadata {
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self.0)
+    }
+}
 
 #[pyclass(module = "vectorlink_hnsw")]
 #[derive(Clone)]
@@ -217,7 +230,12 @@ impl Layer {
             layer_index,
         )?))
     }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self.0)
+    }
 }
+
 
 #[pyclass(module = "vectorlink_hnsw")]
 pub struct HnswMetadata(serialize::HnswMetadata);
@@ -226,6 +244,10 @@ pub struct HnswMetadata(serialize::HnswMetadata);
 impl HnswMetadata {
     pub fn layer_count(&self) -> usize {
         self.0.layer_count()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self.0)
     }
 }
 
@@ -319,11 +341,21 @@ impl Hnsw {
     pub fn load(dirpath: &str) -> PyResult<Self> {
         Ok(Self(hnsw::Hnsw::load(dirpath)?))
     }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self.0)
+    }
 }
 
 #[allow(unused)]
 #[pyclass(module = "vectorlink_hnsw")]
 pub struct HnswType(serialize::HnswType);
+
+impl HnswType {
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self.0)
+    }
+}
 
 macro_rules! wrap_index_type {
     ($($type:ident),* $(,)?) => {
@@ -348,6 +380,10 @@ macro_rules! wrap_index_type {
 
                 pub fn store_hnsw(&self, hnsw_dirpath: &str) -> PyResult<()> {
                     Ok(self.0.store_hnsw(hnsw_dirpath)?)
+                }
+
+                pub fn __repr__(&self) -> String {
+                    format!("{:#?}", self.0)
                 }
             }
         )*
@@ -398,6 +434,10 @@ impl BuildParams {
     pub fn default() -> Self {
         Self::from(params::BuildParams::default())
     }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self)
+    }
 }
 
 impl From<params::BuildParams> for BuildParams {
@@ -427,6 +467,10 @@ impl OptimizationParams {
     #[staticmethod]
     pub fn default() -> Self {
         Self::from(params::OptimizationParams::default())
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self)
     }
 }
 
@@ -468,6 +512,10 @@ impl SearchParams {
     #[staticmethod]
     pub fn default() -> Self {
         Self::from(params::SearchParams::default())
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!("{:#?}", self)
     }
 }
 

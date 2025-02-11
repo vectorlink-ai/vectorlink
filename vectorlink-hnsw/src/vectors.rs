@@ -22,7 +22,7 @@ pub enum Vector<'a> {
 /// A slab of `N` vectors, where:
 ///   * each vector is aligned, and
 ///   * `N = data.len() / vector_byte_size`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Vectors {
     data: SimdAlignedAllocation<u8>,
     vector_byte_size: usize,

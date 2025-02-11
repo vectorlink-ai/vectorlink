@@ -73,6 +73,7 @@ pub trait CentroidDistanceCalculatorConstructor {
     fn new(vectors: &Vectors) -> Self::Calculator<'_>;
 }
 
+#[derive(Debug)]
 pub struct MemoizedCentroidDistances {
     dot_products: Vec<f16>,
     norms: Vec<f16>,

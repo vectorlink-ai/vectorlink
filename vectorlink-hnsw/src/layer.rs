@@ -39,7 +39,7 @@ impl Ord for OrderedFloat {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Layer {
     neighborhoods: SimdAlignedAllocation<u32>,
     single_neighborhood_size: usize,

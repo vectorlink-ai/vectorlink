@@ -18,6 +18,7 @@ use crate::{
     vectors::{Vector, Vectors},
 };
 
+#[derive(Debug)]
 pub struct Pq {
     centroids: Vectors,
     pub quantized_vectors: Vectors,
@@ -121,6 +122,7 @@ pub fn centroid_finder<V: VectorRangeIndexable>(
 
 pub struct CentroidConstructor1024x8;
 
+#[derive(Debug)]
 pub struct Quantizer {
     hnsw: Hnsw,
     sp: SearchParams,

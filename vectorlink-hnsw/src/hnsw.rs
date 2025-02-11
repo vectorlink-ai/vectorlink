@@ -10,6 +10,7 @@ use crate::{
 use rand::prelude::*;
 use rayon::prelude::*;
 
+#[derive(Debug)]
 pub struct Hnsw {
     layers: Vec<Layer>,
 }

@@ -66,6 +66,7 @@ pub trait NewIndex: Index {
     fn generate(vectors: Vectors, bp: &BuildParams) -> Self;
 }
 
+#[derive(Debug)]
 pub struct Pq1024x8 {
     pq: Pq,
     vectors: Vectors,
@@ -79,18 +80,21 @@ impl Pq1024x8 {
     }
 }
 
+#[derive(Debug)]
 pub struct Hnsw1024 {
     hnsw: Hnsw,
     vectors: Vectors,
     name: String,
 }
 
+#[derive(Debug)]
 pub struct Hnsw1536 {
     hnsw: Hnsw,
     vectors: Vectors,
     name: String,
 }
 
+#[derive(Debug)]
 #[enum_dispatch(Index)]
 pub enum IndexConfiguration {
     Hnsw1024(Hnsw1024),

@@ -6,6 +6,7 @@ use std::{
     simd::{LaneCount, Simd, SimdElement, SupportedLaneCount},
 };
 
+#[derive(Debug)]
 /// Align allocations to be rust simd friendly.
 /// The biggest possible simd abstration is f64x64, which is 512 bytes. So this
 /// will make sure we're aligned to that, allowing simd instructions over the
@@ -15,35 +16,6 @@ pub struct SimdAlignedAllocation<T: SimdElement> {
     data: NonNull<u8>,
     len: usize,
     _owned: PhantomData<T>,
-}
-
-impl<T: SimdElement> std::fmt::Debug for SimdAlignedAllocation<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-
-        unsafe fn fmt_as_array(
-            ptr: &NonNull<u8>,
-            len: usize,
-        ) -> Result<String, std::fmt::Error> {
-            use std::fmt::Write;
-            let mut buf = String::new();
-            write!(buf, "[")?;
-            for i in 0..len {
-                if i > 0 {
-                    write!(buf, ", ")?;
-                }
-                write!(buf, "{}", ptr.offset(i as isize).as_ref())?;
-            }
-            write!(buf, "]")?;
-            Ok(buf)
-        }
-
-        f.debug_struct("SimdAlignedAllocation")
-            .field("data", unsafe { self.data.as_ref() })
-            .field("*data", unsafe { &fmt_as_array(&self.data, self.len)? })
-            .field("len", &self.len)
-            .field("_owned", &self._owned)
-            .finish()
-    }
 }
 
 unsafe impl<T: SimdElement> Send for SimdAlignedAllocation<T> {}
